@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus - Matching System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<aside class="sidebar">
+    <a href="/" class="logo">
+        <span>NEXUS</span>
+    </a>
+    <nav class="nav-links">
+        <a href="/teachers" class="nav-item {{ 'active' if request.path == '/teachers' }}">
+            <i>👥</i> 講師一覧
+        </a>
+        <a href="/students" class="nav-item {{ 'active' if request.path == '/students' }}">
+            <i>🎓</i> 生徒一覧
+        </a>
+        <a href="/matching" class="nav-item {{ 'active' if request.path == '/matching' }}">
+            <i>🔄</i> マッチング実行
+        </a>
+        <a href="/result" class="nav-item {{ 'active' if request.path == '/result' }}">
+            <i>📊</i> マッチング結果
+        </a>
+    </nav>
+</aside>
+
+<main class="main-content">
+    {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="header">
+    <h1>{{ '講師の編集' if teacher else '講師の追加' }}</h1>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <form method="post">
+        <div class="form-group">
+            <label for="name">名前</label>
+            <input name="name" id="name" required placeholder="氏名を入力" value="{{ teacher.name if teacher else '' }}">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="age">年齢層</label>
+                <select name="age" id="age">
+                    <option {{ 'selected' if teacher and teacher.age == '10～20代' }}>10～20代</option>
+                    <option {{ 'selected' if teacher and teacher.age == '30～40代' }}>30～40代</option>
+                    <option {{ 'selected' if teacher and teacher.age == '50代以上' }}>50代以上</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="gender">性別</label>
+                <select name="gender" id="gender">
+                    <option {{ 'selected' if teacher and teacher.gender == '男性' }}>男性</option>
+                    <option {{ 'selected' if teacher and teacher.gender == '女性' }}>女性</option>
+                </select>
+            </div>
+        </div>
+
+        <label>得意科目 (1:得意, 2:対応可, 3:不得意)</label>
+        <div class="score-grid">
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">数学</label>
+                <select name="math">
+                    <option value="1" {{ 'selected' if teacher and teacher.math == 1 }}>1:得意</option>
+                    <option value="2" {{ 'selected' if not teacher or teacher.math == 2 }}>2:対応可</option>
+                    <option value="3" {{ 'selected' if teacher and teacher.math == 3 }}>3:不得意</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">英語</label>
+                <select name="english">
+                    <option value="1" {{ 'selected' if teacher and teacher.english == 1 }}>1:得意</option>
+                    <option value="2" {{ 'selected' if not teacher or teacher.english == 2 }}>2:対応可</option>
+                    <option value="3" {{ 'selected' if teacher and teacher.english == 3 }}>3:不得意</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">国語</label>
+                <select name="japanese">
+                    <option value="1" {{ 'selected' if teacher and teacher.japanese == 1 }}>1:得意</option>
+                    <option value="2" {{ 'selected' if not teacher or teacher.japanese == 2 }}>2:対応可</option>
+                    <option value="3" {{ 'selected' if teacher and teacher.japanese == 3 }}>3:不得意</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">理科</label>
+                <select name="science">
+                    <option value="1" {{ 'selected' if teacher and teacher.science == 1 }}>1:得意</option>
+                    <option value="2" {{ 'selected' if not teacher or teacher.science == 2 }}>2:対応可</option>
+                    <option value="3" {{ 'selected' if teacher and teacher.science == 3 }}>3:不得意</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">社会</label>
+                <select name="social">
+                    <option value="1" {{ 'selected' if teacher and teacher.social == 1 }}>1:得意</option>
+                    <option value="2" {{ 'selected' if not teacher or teacher.social == 2 }}>2:対応可</option>
+                    <option value="3" {{ 'selected' if teacher and teacher.social == 3 }}>3:不得意</option>
+                </select>
+            </div>
+        </div>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);">
+        
+        <h3 style="margin-bottom: 1rem; font-size: 1rem;">希望する生徒の条件</h3>
+        <div class="form-group">
+            <label for="pref_gender">希望性別</label>
+            <select name="pref_gender" id="pref_gender" style="max-width: 200px;">
+                <option {{ 'selected' if teacher and teacher.pref_gender == '不問' }}>不問</option>
+                <option {{ 'selected' if teacher and teacher.pref_gender == '男' }}>男</option>
+                <option {{ 'selected' if teacher and teacher.pref_gender == '女' }}>女</option>
+            </select>
+        </div>
+        <label>学年別の優先度 (1:高, 2:中, 3:低)</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">中1</label>
+                <select name="pref_mid1_priority">
+                    <option value="1" {{ 'selected' if teacher and teacher.pref_mid1_priority == 1 }}>1</option>
+                    <option value="2" {{ 'selected' if not teacher or teacher.pref_mid1_priority == 2 }}>2</option>
+                    <option value="3" {{ 'selected' if teacher and teacher.pref_mid1_priority == 3 }}>3</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">中2</label>
+                <select name="pref_mid2_priority">
+                    <option value="1" {{ 'selected' if teacher and teacher.pref_mid2_priority == 1 }}>1</option>
+                    <option value="2" {{ 'selected' if not teacher or teacher.pref_mid2_priority == 2 }}>2</option>
+                    <option value="3" {{ 'selected' if teacher and teacher.pref_mid2_priority == 3 }}>3</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">中3</label>
+                <select name="pref_mid3_priority">
+                    <option value="1" {{ 'selected' if teacher and teacher.pref_mid3_priority == 1 }}>1</option>
+                    <option value="2" {{ 'selected' if not teacher or teacher.pref_mid3_priority == 2 }}>2</option>
+                    <option value="3" {{ 'selected' if teacher and teacher.pref_mid3_priority == 3 }}>3</option>
+                </select>
+            </div>
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button class="btn btn-primary">保存する</button>
+            <a href="/teachers" class="btn btn-outline">キャンセル</a>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="header">
+    <h1>講師一覧</h1>
+    <a href="/teacher/add" class="btn btn-primary">
+        <span>+</span> 講師を追加
+    </a>
+</div>
+
+<div class="card">
+    <form action="/teacher/attend_update" method="post">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">出席</th>
+                        <th>氏名</th>
+                        <th>年齢</th>
+                        <th>性別</th>
+                        <th>科目(数/英/国/理/社)</th>
+                        <th>希望生徒</th>
+                        <th style="text-align: right;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in teachers %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" name="attend" value="{{t.id}}" {{ 'checked' if t.attend }}>
+                        </td>
+                        <td><strong>{{t.name}}</strong></td>
+                        <td>{{t.age}}</td>
+                        <td>{{t.gender}}</td>
+                        <td style="font-size: 0.8rem; color: var(--text-muted);">
+                            {{t.math}}/{{t.english}}/{{t.japanese}}/{{t.science}}/{{t.social}}
+                        </td>
+                        <td style="font-size: 0.8rem;">
+                            {{t.pref_gender}} / 中1:{{t.pref_mid1_priority}}, 中2:{{t.pref_mid2_priority}}, 中3:{{t.pref_mid3_priority}}
+                        </td>
+                        <td style="text-align: right;">
+                            <a href="/teacher/edit/{{t.id}}" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">編集</a>
+                            <a href="/teacher/delete/{{t.id}}" class="btn btn-outline btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="return confirm('本当に削除しますか？')">削除</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top: 1.5rem; text-align: right;">
+            <button class="btn btn-outline">出席状況を保存</button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

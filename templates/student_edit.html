@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="header">
+    <h1>{{ '生徒の編集' if student else '生徒の追加' }}</h1>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <form method="post">
+        <div class="form-group">
+            <label for="name">氏名</label>
+            <input name="name" id="name" required placeholder="氏名を入力" value="{{ student.name if student else '' }}">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="grade">学年</label>
+                <select name="grade" id="grade">
+                    <option {{ 'selected' if student and student.grade == '中1' }}>中1</option>
+                    <option {{ 'selected' if student and student.grade == '中2' }}>中2</option>
+                    <option {{ 'selected' if student and student.grade == '中3' }}>中3</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="gender">性別</label>
+                <select name="gender" id="gender">
+                    <option {{ 'selected' if student and student.gender == '男性' }}>男性</option>
+                    <option {{ 'selected' if student and student.gender == '女性' }}>女性</option>
+                </select>
+            </div>
+        </div>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);">
+        
+        <h3 style="margin-bottom: 1rem; font-size: 1rem;">希望する講師の条件</h3>
+        <div class="form-group">
+            <label for="pref_gender">希望性別</label>
+            <select name="pref_gender" id="pref_gender" style="max-width: 200px;">
+                <option {{ 'selected' if student and student.pref_gender == '不問' }}>不問</option>
+                <option {{ 'selected' if student and student.pref_gender == '男' }}>男</option>
+                <option {{ 'selected' if student and student.pref_gender == '女' }}>女</option>
+            </select>
+        </div>
+        <label>講師年代別の優先度 (1:高, 2:中, 3:低)</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">10～20代</label>
+                <select name="pref_age1020_priority">
+                    <option value="1" {{ 'selected' if student and student.pref_age1020_priority == 1 }}>1</option>
+                    <option value="2" {{ 'selected' if not student or student.pref_age1020_priority == 2 }}>2</option>
+                    <option value="3" {{ 'selected' if student and student.pref_age1020_priority == 3 }}>3</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">30～40代</label>
+                <select name="pref_age3040_priority">
+                    <option value="1" {{ 'selected' if student and student.pref_age3040_priority == 1 }}>1</option>
+                    <option value="2" {{ 'selected' if not student or student.pref_age3040_priority == 2 }}>2</option>
+                    <option value="3" {{ 'selected' if student and student.pref_age3040_priority == 3 }}>3</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="font-size: 0.75rem;">50代以上</label>
+                <select name="pref_age50_priority">
+                    <option value="1" {{ 'selected' if student and student.pref_age50_priority == 1 }}>1</option>
+                    <option value="2" {{ 'selected' if not student or student.pref_age50_priority == 2 }}>2</option>
+                    <option value="3" {{ 'selected' if student and student.pref_age50_priority == 3 }}>3</option>
+                </select>
+            </div>
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button class="btn btn-primary">保存する</button>
+            <a href="/students" class="btn btn-outline">キャンセル</a>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

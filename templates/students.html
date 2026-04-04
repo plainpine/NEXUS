@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="header">
+    <h1>生徒一覧</h1>
+    <a href="/student/add" class="btn btn-primary">
+        <span>+</span> 生徒を追加
+    </a>
+</div>
+
+<div class="card">
+    <form action="/student/list_update" method="post">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">出席</th>
+                        <th>氏名</th>
+                        <th>学年</th>
+                        <th>性別</th>
+                        <th>当日科目1</th>
+                        <th>当日科目2</th>
+                        <th>希望講師</th>
+                        <th style="text-align: right;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in students %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" name="attend" value="{{s.id}}" {{ 'checked' if s.attend }}>
+                        </td>
+                        <td><strong>{{s.name}}</strong></td>
+                        <td>{{s.grade}}</td>
+                        <td>{{s.gender}}</td>
+                        <td>
+                            <select name="sub1_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
+                                {% for sub in ['数学', '英語', '国語', '理科', '社会'] %}
+                                <option value="{{sub}}" {{ 'selected' if s.subject1 == sub }}>{{sub}}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <select name="sub2_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
+                                <option value="なし" {{ 'selected' if s.subject2 == 'なし' }}>なし</option>
+                                {% for sub in ['数学', '英語', '国語', '理科', '社会'] %}
+                                <option value="{{sub}}" {{ 'selected' if s.subject2 == sub }}>{{sub}}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td style="font-size: 0.8rem;">
+                            {{s.pref_gender}} / 20s:{{s.pref_age1020_priority}}, 40s:{{s.pref_age3040_priority}}, 50s:{{s.pref_age50_priority}}
+                        </td>
+                        <td style="text-align: right;">
+                            <a href="/student/edit/{{s.id}}" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">編集</a>
+                            <a href="/student/delete/{{s.id}}" class="btn btn-outline btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="return confirm('本当に削除しますか？')">削除</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top: 1.5rem; text-align: right;">
+            <button class="btn btn-outline">出席と科目を保存</button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}
