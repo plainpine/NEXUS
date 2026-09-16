@@ -930,6 +930,29 @@ def matching_setup():
     
     return render_template('matching_setup.html', events=events, selected_event=selected_event, teachers=teachers, students=students)
 
+# マッチング設定
+@app.route('/matching/config', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def matching_config():
+    org_id = session['organization_id']
+    if request.method == 'POST':
+        for key in request.form.keys():
+            value = request.form[key]
+            config = Config.query.filter_by(key=key, organization_id=org_id).first()
+            if config:
+                config.value = value
+            else:
+                config = Config(key=key, value=value, organization_id=org_id)
+                db.session.add(config)
+        db.session.commit()
+        flash('設定を保存しました')
+        return redirect(url_for('matching_config'))
+    
+    configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
+    return render_template('matching_config.html', configs=configs)
+
+# マッチング
 @app.route('/matching', methods=['GET', 'POST'])
 @login_required
 def matching():
@@ -941,6 +964,10 @@ def matching():
 
     if not event_id:
         return "イベントが選択されていません", 400
+    
+    org_id = session.get('organization_id')
+    # 設定をDBから取得
+    configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
         
     attendances = EventAttendance.query.filter_by(event_id=event_id, attend=True).all()
     
@@ -951,8 +978,8 @@ def matching():
     teachers = Teacher.query.filter(Teacher.user_id.in_(teacher_user_ids)).all()
     students = Student.query.filter(Student.user_id.in_(student_user_ids)).all()
     
-    # マッチングロジック (現在のsimulated_annealingをそのまま利用し、対象を渡す)
-    results, energy = simulated_annealing(teachers, students)
+    # マッチングロジック (設定を渡すように変更)
+    results, energy = simulated_annealing(teachers, students, configs)
 
     session['last_energy'] = energy
 
@@ -978,7 +1005,7 @@ def matching():
             # venue_id が取得できない場合、適当なデフォルト値を使うか、エラーにするか検討が必要だが
             # ここではエラーを起こさないように適当な値を割り当てる (このロジックは要改善の可能性あり)
             # とりあえず会場テーブルの最初の会場を取得してみる
-            first_venue = Venue.query.first()
+            first_venue = Venue.query.filter_by(organization_id=org_id).first()
             if first_venue:
                 venue_id = first_venue.id
 

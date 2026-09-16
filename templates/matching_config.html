@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header">
+    <h1>マッチング重み設定</h1>
+</div>
+
+<div class="card" style="max-width: 800px;">
+    <form method="post">
+        <h3>科目設定</h3>
+        <div class="form-group">
+            <label for="subject_proficiency_weight">科目適性の重み (デフォルト: 2.0)</label>
+            <input type="number" step="0.1" name="subject_proficiency_weight" id="subject_proficiency_weight" value="{{ configs.get('subject_proficiency_weight', 2.0) }}" required>
+            <small>講師が得意な科目の評価倍率です。値を大きくすると、より科目適性を重視したマッチングになります。</small>
+        </div>
+        <div class="form-group">
+            <label for="subject_mismatch_penalty">科目不一致ペナルティ (デフォルト: -40)</label>
+            <input type="number" name="subject_mismatch_penalty" id="subject_mismatch_penalty" value="{{ configs.get('subject_mismatch_penalty', -40) }}" required>
+            <small>希望科目が不得意な講師への割り当てを減点します。値を小さく（負の方向に）するほど、不得意な講師の割り当てが避けられます。</small>
+        </div>
+
+        <h3>性別設定</h3>
+        <div class="form-group">
+            <label for="gender_weight">性別マッチの重み (デフォルト: 5)</label>
+            <input type="number" name="gender_weight" id="gender_weight" value="{{ configs.get('gender_weight', 5) }}" required>
+            <small>希望する性別と一致した場合に加算されるスコアです。値を大きくすると、性別の希望がより重視されます。</small>
+        </div>
+
+        <h3>優先度設定（講師の学年希望・生徒の年齢希望）</h3>
+        <p><small>マッチング設定における優先度「1:非常に優先」「2:優先」「3:普通」に割り当てるボーナススコアです。</small></p>
+        <div class="form-group">
+            <label for="priority_1_bonus">優先度「1（非常に優先）」のボーナス (デフォルト: 20)</label>
+            <input type="number" name="priority_1_bonus" id="priority_1_bonus" value="{{ configs.get('priority_1_bonus', 20) }}" required>
+            <small>この設定が一致した時に加算されるスコアです。値を大きくすると、この優先度の講師/生徒がより選ばれやすくなります。</small>
+        </div>
+        <div class="form-group">
+            <label for="priority_2_bonus">優先度「2（優先）」のボーナス (デフォルト: 10)</label>
+            <input type="number" name="priority_2_bonus" id="priority_2_bonus" value="{{ configs.get('priority_2_bonus', 10) }}" required>
+            <small>この設定が一致した時に加算されるスコアです。</small>
+        </div>
+        <div class="form-group">
+            <label for="priority_3_bonus">優先度「3（普通）」のボーナス (デフォルト: 5)</label>
+            <input type="number" name="priority_3_bonus" id="priority_3_bonus" value="{{ configs.get('priority_3_bonus', 5) }}" required>
+            <small>この設定が一致した時に加算されるスコアです。</small>
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-primary">保存する</button>
+            <a href="{{ url_for('matching_setup') }}" class="btn btn-outline">キャンセル</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

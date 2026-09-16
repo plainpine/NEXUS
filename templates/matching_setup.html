@@ -17,6 +17,9 @@
             {% endfor %}
         </select>
     </form>
+    <div style="margin-top: 1rem;">
+        <a href="{{ url_for('matching_config') }}" class="btn btn-outline">マッチング重み設定を変更する</a>
+    </div>
 </div>
 
 {% if selected_event %}
