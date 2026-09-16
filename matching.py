@@ -1,9 +1,8 @@
 import openjij as oj
-import numpy as np
 
 # 制約用定数
-LAMBDA_STUDENT_CONSTRAINT = 200 # 各生徒は1人の講師
-LAMBDA_TEACHER_CONSTRAINT = 200 # 各講師の担当人数均等化
+LAMBDA_STUDENT_CONSTRAINT = 500 # 各生徒は1人の講師
+LAMBDA_TEACHER_CONSTRAINT = 1000 # 各講師の担当人数均等化
 
 # デフォルト設定値
 DEFAULT_CONFIG = {
@@ -44,7 +43,8 @@ def sub_name_to_attr(sub_name):
     mapping = {"数学": "math", "英語": "english", "国語": "japanese", "理科": "science", "社会": "social"}
     return mapping.get(sub_name)
 
-def score(teacher, student, config):
+def score(teacher, student, config=None):
+    config = config or DEFAULT_CONFIG
     total = 0
     
     # 1. 科目のマッチング
@@ -95,7 +95,8 @@ def score(teacher, student, config):
 
     return total
 
-def simulated_annealing(teachers, students, config):
+def simulated_annealing(teachers, students, config=None):
+    config = config or DEFAULT_CONFIG
     # 1. 堅牢性の向上：空入力時の処理
     if not teachers or not students:
         return [], 0.0
@@ -103,7 +104,11 @@ def simulated_annealing(teachers, students, config):
     num_t = len(teachers)
     num_s = len(students)
 
-    # 各講師の理想的な担当人数を計算 (平準化)
+    # 各講師の担当人数の下限・上限。
+    min_teacher_load = num_s // num_t
+
+    # 最終結果は、下限人数に余りを加えた目標人数へ合わせる。
+    # これにより、下限・上限の範囲内でも一部の講師に偏ることを防ぐ。
     base_count = num_s // num_t
     remainder = num_s % num_t
     target_counts = [base_count + (1 if j < remainder else 0) for j in range(num_t)]
@@ -143,7 +148,8 @@ def simulated_annealing(teachers, students, config):
 
     # 4. アルゴリズム改善：複数回サンプリング
     sampler = oj.SASampler()
-    response = sampler.sample_qubo(qubo, num_reads=20)
+    num_reads = int(config.get("num_reads", 100))
+    response = sampler.sample_qubo(qubo, num_reads=num_reads)
     
     # 最良解を取得
     best_solution = response.first
@@ -161,23 +167,54 @@ def simulated_annealing(teachers, students, config):
     assigned_teachers = [None] * num_s
     teacher_load = [0] * num_t
     
-    # QUBOのサンプルをベースにする
+    # まず各講師の下限人数を確保する。
+    # これを後回しにすると、スコアの高い講師に生徒が集中して下限を満たせない。
+    for teacher_idx in range(num_t):
+        while teacher_load[teacher_idx] < min_teacher_load:
+            available_students = [
+                i for i in range(num_s)
+                if assigned_teachers[i] is None
+            ]
+            if not available_students:
+                raise RuntimeError("講師の担当人数下限を満たせません")
+            student_idx = max(
+                available_students,
+                key=lambda i: student_teacher_scores[i][teacher_idx],
+            )
+            assigned_teachers[student_idx] = teacher_idx
+            teacher_load[teacher_idx] += 1
+
+    # 下限を確保した残りの生徒は、QUBOのサンプルをベースに割り当てる。
     for i in range(num_s):
-        potential_assignments = []
-        for j in range(num_t):
-            if sample.get(get_idx(i, j), 0) == 1:
-                potential_assignments.append(j)
-        
-        # サンプルで割り当てがある場合、スコア最高を選ぶ
-        if potential_assignments:
-            best_t_idx = max(potential_assignments, key=lambda j: student_teacher_scores[i][j])
+        if assigned_teachers[i] is not None:
+            continue
+
+        potential_assignments = [
+            j for j in range(num_t)
+            if sample.get(get_idx(i, j), 0) == 1
+        ]
+        available_assignments = [
+            j for j in potential_assignments
+            if teacher_load[j] < target_counts[j]
+        ]
+        if available_assignments:
+            best_t_idx = max(available_assignments, key=lambda j: student_teacher_scores[i][j])
             assigned_teachers[i] = best_t_idx
             teacher_load[best_t_idx] += 1
             
-    # サンプルで割り当てがなかった生徒をスコア最高講師に割り当てる
+    # 未割り当ての生徒は、目標人数に達していない講師のうちスコア最高へ割り当てる。
     for i in range(num_s):
         if assigned_teachers[i] is None:
-            best_t_idx = int(np.argmax(student_teacher_scores[i]))
+            available_teachers = [
+                j for j in range(num_t)
+                if teacher_load[j] < target_counts[j]
+            ]
+            if not available_teachers:
+                raise RuntimeError("講師ごとの目標担当人数内に全生徒を割り当てられません")
+            best_t_idx = max(
+                available_teachers,
+                key=lambda j: student_teacher_scores[i][j],
+            )
             assigned_teachers[i] = best_t_idx
             teacher_load[best_t_idx] += 1
             

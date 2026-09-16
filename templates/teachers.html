@@ -20,6 +20,23 @@
         <span>+</span> 講師を追加
     </a>
 </div>
+
+{% if not event_info %}
+<details style="margin-bottom: 1rem;">
+    <summary class="card" style="cursor: pointer; padding: 1rem;">
+        <h4 style="display: inline;">データ移行</h4>
+    </summary>
+    <div class="card" style="padding: 1rem;">
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <a href="/teachers/export" class="btn" style="padding: 0.5rem 1rem; border-radius: 4px; background-color: #6c757d; color: white; text-decoration: none; display: inline-block; min-width: 120px; text-align: center; white-space: nowrap;">JSONエクスポート</a>
+            <form action="/teachers/import" method="post" enctype="multipart/form-data" style="display: flex; gap: 0.5rem; align-items: center;">
+                <input type="file" name="file" accept=".json" required>
+                <button type="submit" class="btn" style="padding: 0.5rem 1rem; border-radius: 4px; background-color: #6c757d; color: white; border: none; cursor: pointer; min-width: 120px; white-space: nowrap;">JSONインポート</button>
+            </form>
+        </div>
+    </div>
+</details>
+{% endif %}
 ...
 
 <div class="card">

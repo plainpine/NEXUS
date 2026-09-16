@@ -65,6 +65,24 @@ class Teacher(db.Model):
     pref_mid3_priority = db.Column(db.Integer, default=2)
     attend = db.Column(db.Boolean, default=False)
 
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "username": self.user.username if self.user else None,
+            "age": self.age,
+            "gender": self.gender,
+            "math": self.math,
+            "english": self.english,
+            "japanese": self.japanese,
+            "science": self.science,
+            "social": self.social,
+            "pref_gender": self.pref_gender,
+            "pref_mid1_priority": self.pref_mid1_priority,
+            "pref_mid2_priority": self.pref_mid2_priority,
+            "pref_mid3_priority": self.pref_mid3_priority,
+            "attend": self.attend
+        }
+
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
@@ -83,6 +101,19 @@ class Student(db.Model):
     pref_age3040_priority = db.Column(db.Integer, default=2)
     pref_age50_priority = db.Column(db.Integer, default=2)
     attend = db.Column(db.Boolean, default=False)
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "username": self.user.username if self.user else None,
+            "grade": self.grade,
+            "gender": self.gender,
+            "pref_gender": self.pref_gender,
+            "pref_age1020_priority": self.pref_age1020_priority,
+            "pref_age3040_priority": self.pref_age3040_priority,
+            "pref_age50_priority": self.pref_age50_priority,
+            "attend": self.attend
+        }
 
 class Event(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -119,5 +150,9 @@ class MatchResult(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=False)
     venue_id = db.Column(db.Integer, db.ForeignKey('venue.id'), nullable=False)
+    # 同名講師を区別するため、講師IDも保存する。
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=True)
+    # 同名生徒を区別するため、生徒IDも保存する。
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=True)
     teacher = db.Column(db.String(50))
     student = db.Column(db.String(50))

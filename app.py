@@ -1,6 +1,8 @@
-from flask import Flask, render_template, request, redirect, url_for, session, abort, flash
+from flask import Flask, render_template, request, redirect, url_for, session, abort, flash, jsonify
+import json
 from functools import wraps
 from datetime import datetime
+from sqlalchemy import inspect, text
 from models import db, Teacher, Student, MatchResult, User, Event, Config, EventAttendance, Organization, Venue
 from matching import simulated_annealing
 
@@ -12,20 +14,176 @@ app.config['SECRET_KEY'] = "secret"
 db.init_app(app)
 
 with app.app_context():
-    db.create_all()
-    # スーパー管理者組織とスーパー管理者の作成
-    if not Organization.query.filter_by(name='System').first():
-        org = Organization(name='System')
-        db.session.add(org)
-        db.session.commit()
-    else:
-        org = Organization.query.filter_by(name='System').first()
+    inspector = inspect(db.engine)
+    if 'match_result' in inspector.get_table_names():
+        columns = {column['name'] for column in inspector.get_columns('match_result')}
+        missing_columns = {
+            'teacher_id': 'ALTER TABLE match_result ADD COLUMN teacher_id INTEGER',
+            'student_id': 'ALTER TABLE match_result ADD COLUMN student_id INTEGER',
+        }
+        for column_name, alter_statement in missing_columns.items():
+            if column_name not in columns:
+                db.session.execute(text(alter_statement))
+        if any(column_name not in columns for column_name in missing_columns):
+            db.session.commit()
+
+# ログインチェックデコレータ
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# 組織チェックデコレータ
+def organization_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        
+        user = User.query.get(session['user_id'])
+        
+        # 組織情報を必ずセット
+        session['organization_id'] = user.organization_id
+        session['org_name'] = user.organization.name
+            
+        return f(*args, **kwargs)
+    return decorated_function
+
+# 管理者チェックデコレータ
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        user = User.query.get(session['user_id'])
+        if not user or not user.is_admin:
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+# 講師エクスポート
+@app.route('/teachers/export', methods=['GET'])
+@login_required
+@organization_required
+def teachers_export():
+    org_id = session['organization_id']
+    teachers = Teacher.query.filter_by(organization_id=org_id).all()
+    data = [t.to_dict() for t in teachers]
+    response = jsonify(data)
+    response.headers['Content-Disposition'] = 'attachment; filename=teachers.json'
+    return response
+
+# 講師インポート
+@app.route('/teachers/import', methods=['POST'])
+@login_required
+@organization_required
+def teachers_import():
+    file = request.files['file']
+    if not file:
+        return "ファイルがありません", 400
     
-    if not User.query.filter_by(username='admin').first():
-        admin = User(username='admin', is_admin=True, is_super_admin=True, organization_id=org.id)
-        admin.set_password('admin')
-        db.session.add(admin)
-        db.session.commit()
+    data = json.load(file)
+    org_id = session['organization_id']
+    
+    for item in data:
+        # 重複チェック: 同じ組織内で氏名が同じならスキップ
+        if Teacher.query.filter_by(name=item['name'], organization_id=org_id).first():
+            continue
+            
+        teacher = Teacher(
+            name=item['name'],
+            age=item.get('age'),
+            gender=item.get('gender'),
+            math=item.get('math', 3),
+            english=item.get('english', 3),
+            japanese=item.get('japanese', 3),
+            science=item.get('science', 3),
+            social=item.get('social', 3),
+            subject1=item.get('subject1', 'なし'),
+            subject2=item.get('subject2', 'なし'),
+            pref_gender=item.get('pref_gender'),
+            pref_mid1_priority=item.get('pref_mid1_priority', 2),
+            pref_mid2_priority=item.get('pref_mid2_priority', 2),
+            pref_mid3_priority=item.get('pref_mid3_priority', 2),
+            attend=item.get('attend', False),
+            organization_id=org_id
+        )
+        
+        # ユーザ作成
+        username = item.get('username')
+        if username:
+            user = User(username=username, name=item['name'], organization_id=org_id)
+            user.set_password("password") # 初期パスワード
+            db.session.add(user)
+            db.session.flush()
+            teacher.user_id = user.id
+            
+        db.session.add(teacher)
+    db.session.commit()
+    flash('講師情報をインポートしました')
+    return redirect(url_for('teachers'))
+
+# 生徒エクスポート
+@app.route('/students/export', methods=['GET'])
+@login_required
+@organization_required
+def students_export():
+    org_id = session['organization_id']
+    students = Student.query.filter_by(organization_id=org_id).all()
+    data = [s.to_dict() for s in students]
+    response = jsonify(data)
+    response.headers['Content-Disposition'] = 'attachment; filename=students.json'
+    return response
+
+# 生徒インポート
+@app.route('/students/import', methods=['POST'])
+@login_required
+@organization_required
+def students_import():
+    file = request.files['file']
+    if not file:
+        return "ファイルがありません", 400
+    
+    data = json.load(file)
+    org_id = session['organization_id']
+    
+    for item in data:
+        # 重複チェック: 同じ組織内で氏名が同じならスキップ
+        if Student.query.filter_by(name=item['name'], organization_id=org_id).first():
+            continue
+            
+        student = Student(
+            name=item['name'],
+            grade=item.get('grade'),
+            gender=item.get('gender'),
+            subject1=item.get('subject1', 'なし'),
+            subject2=item.get('subject2', 'なし'),
+            pref_gender=item.get('pref_gender'),
+            pref_age1020_priority=item.get('pref_age1020_priority', 2),
+            pref_age3040_priority=item.get('pref_age3040_priority', 2),
+            pref_age50_priority=item.get('pref_age50_priority', 2),
+            attend=item.get('attend', False),
+            organization_id=org_id
+        )
+        
+        # ユーザ作成
+        username = item.get('username')
+        if username:
+            user = User(username=username, organization_id=org_id)
+            user.set_password("password") # 初期パスワード
+            db.session.add(user)
+            db.session.flush()
+            student.user_id = user.id
+            
+        db.session.add(student)
+    db.session.commit()
+    flash('生徒情報をインポートしました')
+    return redirect(url_for('students'))
+
+# (以下、既存コードはそのまま)...
 
 # ログインチェックデコレータ
 def login_required(f):
@@ -288,6 +446,7 @@ def teachers():
     event_id = session.get('selected_event_id')
     event_info = None
     all_teachers = Teacher.query.filter_by(organization_id=org_id).all()
+    all_students = Student.query.filter_by(organization_id=org_id).all()
     venues = Venue.query.filter_by(organization_id=org_id).all()
     saved = request.args.get('saved', False)
     
@@ -523,8 +682,10 @@ def students():
     org_id = session['organization_id']
     event_id = session.get('selected_event_id')
     event_info = None
+    all_teachers = Teacher.query.filter_by(organization_id=org_id).all()
     all_students = Student.query.filter_by(organization_id=org_id).all()
     venues = Venue.query.filter_by(organization_id=org_id).all()
+    saved = request.args.get('saved', False)
     
     if event_id:
         event = Event.query.get(event_id)
@@ -632,9 +793,16 @@ def student_edit(id):
         student.grade = request.form['grade']
         student.gender = request.form['gender']
         student.pref_gender = request.form['pref_gender']
-        student.pref_age1020_priority = int(request.form['pref_age1020_priority'])
-        student.pref_age3040_priority = int(request.form['pref_age3040_priority'])
-        student.pref_age50_priority = int(request.form['pref_age50_priority'])
+        
+        # 優先度マッピング
+        pref_age_priority = request.form['pref_age_priority']
+        if pref_age_priority == 'ヤング':
+            student.pref_age1020_priority, student.pref_age3040_priority, student.pref_age50_priority = 1, 3, 3
+        elif pref_age_priority == 'アダルト':
+            student.pref_age1020_priority, student.pref_age3040_priority, student.pref_age50_priority = 3, 3, 1
+        else: # 不問
+            student.pref_age1020_priority, student.pref_age3040_priority, student.pref_age50_priority = 2, 2, 2
+            
         student.default_venue_id = request.form.get('default_venue_id') or None
         
         # ユーザ更新
@@ -1002,27 +1170,45 @@ def matching():
             venue_id = s.default_venue_id
             
         if not venue_id:
-            # venue_id が取得できない場合、適当なデフォルト値を使うか、エラーにするか検討が必要だが
-            # ここではエラーを起こさないように適当な値を割り当てる (このロジックは要改善の可能性あり)
-            # とりあえず会場テーブルの最初の会場を取得してみる
+            # venue_id が取得できない場合、適当なデフォルト値を使う
             first_venue = Venue.query.filter_by(organization_id=org_id).first()
             if first_venue:
                 venue_id = first_venue.id
+            else:
+                # 会場が一つもない場合はエラーとするかダミーIDを入れる必要があるが、
+                # ここではIntegrityErrorを避けるためダミー値として1を設定 (会場IDは1から始まる前提)
+                venue_id = 1 
 
-        r = MatchResult(event_id=event_id, venue_id=venue_id, teacher=t.name, student=s.name)
+        r = MatchResult(
+            event_id=event_id,
+            venue_id=venue_id,
+            teacher_id=t.id,
+            student_id=s.id,
+            teacher=t.name,
+            student=s.name,
+        )
         db.session.add(r)
 
     db.session.commit()
-    return redirect(url_for('result'))
+    flash('マッチングを再実行しました')
+    return redirect(url_for('result', event_id=event_id))
 
 @app.route('/result')
 @login_required
 def result():
     sort_by = request.args.get('sort', 'teacher')
-    if sort_by == 'student':
-        results = MatchResult.query.order_by(MatchResult.student).all()
+    event_id = request.args.get('event_id', type=int) or session.get('selected_event_id')
+    query = MatchResult.query
+    if event_id:
+        query = query.filter_by(event_id=event_id)
     else:
-        results = MatchResult.query.order_by(MatchResult.teacher).all()
+        # 対象イベントがない場合、過去イベントの結果を誤って表示しない。
+        query = query.filter(False)
+
+    if sort_by == 'student':
+        results = query.order_by(MatchResult.student, MatchResult.student_id).all()
+    else:
+        results = query.order_by(MatchResult.teacher, MatchResult.teacher_id).all()
     return render_template('result.html', results=results, sort_by=sort_by)
 
 # 学習会実施ダッシュボード

@@ -35,13 +35,20 @@
         </div>
         <div class="form-group">
             <label for="priority_2_bonus">優先度「2（優先）」のボーナス (デフォルト: 10)</label>
-            <input type="number" name="priority_2_bonus" id="priority_2_bonus" value="{{ configs.get('priority_2_bonus', 10) }}" required>
+            <input type="number" name="priority_2_bonus" id="priority_3_bonus" value="{{ configs.get('priority_2_bonus', 10) }}" required>
             <small>この設定が一致した時に加算されるスコアです。</small>
         </div>
         <div class="form-group">
             <label for="priority_3_bonus">優先度「3（普通）」のボーナス (デフォルト: 5)</label>
             <input type="number" name="priority_3_bonus" id="priority_3_bonus" value="{{ configs.get('priority_3_bonus', 5) }}" required>
             <small>この設定が一致した時に加算されるスコアです。</small>
+        </div>
+
+        <h3>アルゴリズム設定</h3>
+        <div class="form-group">
+            <label for="num_reads">サンプリング回数 (デフォルト: 20)</label>
+            <input type="number" name="num_reads" id="num_reads" value="{{ configs.get('num_reads', 20) }}" required>
+            <small>アニーリングマシンによる探索回数です。大きくするほど良い結果が得られやすくなりますが、計算時間が増加します。</small>
         </div>
 
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
