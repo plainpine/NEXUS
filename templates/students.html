@@ -1,70 +1,202 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% set is_event_selected = (event_info is not none) %}
+{% set is_event_completed = (event_info and event_info.status == '実施後') %}
+{% set is_disabled_inputs = (not is_event_selected or is_event_completed) %}
+{% set is_disabled = is_disabled_inputs %}
+{% set is_disabled_button = (not is_event_selected) %}
+
+{% if event_info %}
+<div class="card" style="margin-bottom: 1rem; background-color: #f8f9fa;">
+    <h3>選択中イベント: {{ event_info.date }} - {{ event_info.name }} ({{ event_info.status }})</h3>
+</div>
+{% endif %}
 
 <div class="header">
     <h1>生徒一覧</h1>
+    <h2 style="font-size: 1.25rem;">{{ current_user.organization.name if current_user.is_super_admin else session.get('org_name', '不明') }}</h2>
     <a href="/student/add" class="btn btn-primary">
         <span>+</span> 生徒を追加
     </a>
 </div>
+...
 
 <div class="card">
-    <form action="/student/list_update" method="post">
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 80px;">出席</th>
-                        <th>氏名</th>
-                        <th>学年</th>
-                        <th>性別</th>
-                        <th>当日科目1</th>
-                        <th>当日科目2</th>
-                        <th>希望講師</th>
-                        <th style="text-align: right;">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for s in students %}
-                    <tr>
-                        <td>
-                            <input type="checkbox" name="attend" value="{{s.id}}" {{ 'checked' if s.attend }}>
-                        </td>
-                        <td><strong>{{s.name}}</strong></td>
-                        <td>{{s.grade}}</td>
-                        <td>{{s.gender}}</td>
-                        <td>
-                            <select name="sub1_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
-                                {% for sub in ['数学', '英語', '国語', '理科', '社会'] %}
-                                <option value="{{sub}}" {{ 'selected' if s.subject1 == sub }}>{{sub}}</option>
-                                {% endfor %}
-                            </select>
-                        </td>
-                        <td>
-                            <select name="sub2_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
-                                <option value="なし" {{ 'selected' if s.subject2 == 'なし' }}>なし</option>
-                                {% for sub in ['数学', '英語', '国語', '理科', '社会'] %}
-                                <option value="{{sub}}" {{ 'selected' if s.subject2 == sub }}>{{sub}}</option>
-                                {% endfor %}
-                            </select>
-                        </td>
-                        <td style="font-size: 0.8rem;">
-                            {{s.pref_gender}} / 20s:{{s.pref_age1020_priority}}, 40s:{{s.pref_age3040_priority}}, 50s:{{s.pref_age50_priority}}
-                        </td>
-                        <td style="text-align: right;">
-                            <a href="/student/edit/{{s.id}}" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">編集</a>
-                            <a href="/student/delete/{{s.id}}" class="btn btn-outline btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="return confirm('本当に削除しますか？')">削除</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <div style="margin-top: 1.5rem; text-align: right;">
-            <button class="btn btn-outline">出席と科目を保存</button>
-        </div>
-    </form>
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>登録</th>
+                    <th>出席</th>
+                    <th>氏名</th>
+                    <th>ユーザID</th>
+                    <th>学年</th>
+                    <th>性別</th>
+                    {% if event_info and event_info.name == '学習会' %}
+                    {% if not (event_info.status == '実施後') %}
+                    <th>会場</th>
+                    <th>前半科目</th>
+                    <th>後半科目</th>
+                    {% endif %}
+                    {% if event_info and event_info.status == '実施後' %}
+                    <th>学習の達成度</th>
+                    <th>講師との相性</th>
+                    {% endif %}
+                    {% endif %}
+                    <th style="text-align: right;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in students %}
+                <tr>
+                    <td>
+                        {% set att = s.attendance %}
+                        {% if att and att.id %}
+                            {% if not (event_info and event_info.status == '実施後') %}
+                                {{ '★' if att.updated_by == 'user' else '☆' }}
+                            {% elif not (event_info and (event_info.status == '実施前' or event_info.status == '実施')) %}
+                                {% if att.achievement and att.compatibility %}
+                                    {{ '★' if att.updated_by == 'user' else '☆' }}
+                                {% endif %}
+                            {% endif %}
+                        {% else %}
+                            &nbsp;
+                        {% endif %}
+                    </td>
+                    <td>
+                        <input type="checkbox" name="attend_{{s.id}}" value="true" {{ 'checked' if s.attendance and s.attendance.attend }} 
+                               style="width: 1.5rem; height: 1.5rem;" 
+                               class="{{ 'disabled-checkbox' if is_disabled or (event_info and event_info.publish_to == '講師') }}"
+                               onchange="toggleAttendance(this, '{{s.id}}')" {{ 'disabled' if is_disabled or (event_info and event_info.publish_to == '講師') }}>
+                    </td>
+                    <td><strong>{{s.name}}</strong></td>
+                    <td>{{s.user.username if s.user else '-'}}</td>
+                    <td>{{s.grade}}</td>
+                    <td>{{s.gender}}</td>
+
+                    {% if event_info and event_info.name == '学習会' %}
+                    {% if not (event_info.status == '実施後') %}
+                    <td>
+                        <select name="venue_id_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;" {{ 'disabled' if is_disabled }}>
+                            {% if not venues %}
+                            <option value="">設定なし</option>
+                            {% endif %}
+                            {% for venue in venues %}
+                            <option value="{{ venue.id }}" {{ 'selected' if (s.attendance and s.attendance.venue_id == venue.id) or (not s.attendance and s.default_venue_id == venue.id) }}>{{ venue.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <select name="sub1_{{s.id}}" id="sub1_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;" {{ 'disabled' if is_disabled or (not (s.attendance and s.attendance.attend) and not (not s.attendance and s.attend)) }}>
+                            <option value="なし" {{ 'selected' if (s.attendance.subject1 if s.attendance else 'なし') == 'なし' }}>なし</option>
+                            {% for sub in ['数学', '英語', '国語', '理科', '社会'] %}
+                            <option value="{{sub}}" {{ 'selected' if (s.attendance.subject1 if s.attendance else 'なし') == sub }}>{{sub}}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <select name="sub2_{{s.id}}" id="sub2_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;" {{ 'disabled' if is_disabled or (not (s.attendance and s.attendance.attend) and not (not s.attendance and s.attend)) }}>
+                            <option value="なし" {{ 'selected' if (s.attendance.subject2 if s.attendance else 'なし') == 'なし' }}>なし</option>
+                            {% for sub in ['数学', '英語', '国語', '理科', '社会'] %}
+                            <option value="{{sub}}" {{ 'selected' if (s.attendance.subject2 if s.attendance else 'なし') == sub }}>{{sub}}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    {% endif %}
+                    {% if event_info and event_info.status == '実施後' %}
+                    <td>
+                        <select name="achievement_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
+                            <option value="4" {{ 'selected' if (s.attendance.achievement if s.attendance else 0) == 4 }}>とてもよくできた</option>
+                            <option value="3" {{ 'selected' if (s.attendance.achievement if s.attendance else 0) == 3 }}>できた</option>
+                            <option value="2" {{ 'selected' if (s.attendance.achievement if s.attendance else 0) == 2 }}>あまりできなかった</option>
+                            <option value="1" {{ 'selected' if (s.attendance.achievement if s.attendance else 0) == 1 }}>できなかった</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="compatibility_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
+                            <option value="4" {{ 'selected' if (s.attendance.compatibility if s.attendance else 0) == 4 }}>とても良かった</option>
+                            <option value="3" {{ 'selected' if (s.attendance.compatibility if s.attendance else 0) == 3 }}>良かった</option>
+                            <option value="2" {{ 'selected' if (s.attendance.compatibility if s.attendance else 0) == 2 }}>あまり良くなかった</option>
+                            <option value="1" {{ 'selected' if (s.attendance.compatibility if s.attendance else 0) == 1 }}>良くなかった</option>
+                        </select>
+                    </td>
+                    {% endif %}
+                    {% endif %}
+                    <td style="text-align: right; display: flex; gap: 0.2rem;">
+                        <button type="button" class="btn btn-primary" style="padding: 0.4rem 0.6rem; font-size: 0.75rem;" onclick="submitAttendance('{{s.id}}')" {{ 'disabled' if is_disabled or (event_info and event_info.publish_to == '講師') }}>保存</button>
+                        <a href="/student/edit/{{s.id}}" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">編集</a>
+                        <a href="/student/delete/{{s.id}}" class="btn btn-outline btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="return confirm('本当に削除しますか？')">削除</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
+</div>
+
+<style>
+    select:disabled, input[type="checkbox"]:disabled, button:disabled, .disabled-checkbox {
+        background-color: #e9ecef;
+        color: #6c757d;
+        border: 1px solid #ced4da;
+    }
+</style>
+
+<script>
+    function toggleAttendance(checkbox, studentId) {
+        const sub1 = document.getElementById('sub1_' + studentId);
+        const sub2 = document.getElementById('sub2_' + studentId);
+        
+        if (sub1 && sub2) {
+            if (checkbox.checked) {
+                sub1.disabled = false;
+                sub2.disabled = false;
+            } else {
+                sub1.disabled = true;
+                sub2.disabled = true;
+                sub1.value = 'なし';
+                sub2.value = 'なし';
+            }
+        }
+    }
+
+    function submitAttendance(studentId) {
+        const attend = document.querySelector('input[name="attend_' + studentId + '"]').checked;
+        const sub1 = document.getElementById('sub1_' + studentId);
+        const sub2 = document.getElementById('sub2_' + studentId);
+        
+        if (attend && sub1.value === 'なし' && sub2.value === 'なし') {
+            alert('出席チェックが入っている生徒の前半・後半が両方なしです。');
+            return;
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/student/attend_save_individual';
+        
+        const inputs = {
+            'student_id': studentId,
+            'event_id': '{{event_info.id if event_info else ""}}',
+            'attend': attend ? 'true' : 'false',
+            'venue_id': document.querySelector('select[name="venue_id_' + studentId + '"]').value,
+            'sub1': sub1.value,
+            'sub2': sub2.value
+        };
+        
+        for (const [name, value] of Object.entries(inputs)) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+        }
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+</script>
 
 {% endblock %}

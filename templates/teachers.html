@@ -1,57 +1,200 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% set is_event_selected = (event_info is not none) %}
+{% set is_event_completed = (event_info and event_info.status == '実施後') %}
+{% set is_disabled_inputs = (not is_event_selected or is_event_completed) %}
+{% set is_disabled = is_disabled_inputs %}
+{% set is_disabled_button = (not is_event_selected) %}
+
+{% if event_info %}
+<div class="card" style="margin-bottom: 1rem; background-color: #f8f9fa;">
+    <h3>選択中イベント: {{ event_info.date }} - {{ event_info.name }} ({{ event_info.status }})</h3>
+</div>
+{% endif %}
 
 <div class="header">
     <h1>講師一覧</h1>
+    <h2 style="font-size: 1.25rem;">{{ current_user.organization.name if current_user.is_super_admin else session.get('org_name', '不明') }}</h2>
     <a href="/teacher/add" class="btn btn-primary">
         <span>+</span> 講師を追加
     </a>
 </div>
+...
 
 <div class="card">
-    <form action="/teacher/attend_update" method="post">
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 80px;">出席</th>
-                        <th>氏名</th>
-                        <th>年齢</th>
-                        <th>性別</th>
-                        <th>科目(数/英/国/理/社)</th>
-                        <th>希望生徒</th>
-                        <th style="text-align: right;">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for t in teachers %}
-                    <tr>
-                        <td>
-                            <input type="checkbox" name="attend" value="{{t.id}}" {{ 'checked' if t.attend }}>
-                        </td>
-                        <td><strong>{{t.name}}</strong></td>
-                        <td>{{t.age}}</td>
-                        <td>{{t.gender}}</td>
-                        <td style="font-size: 0.8rem; color: var(--text-muted);">
-                            {{t.math}}/{{t.english}}/{{t.japanese}}/{{t.science}}/{{t.social}}
-                        </td>
-                        <td style="font-size: 0.8rem;">
-                            {{t.pref_gender}} / 中1:{{t.pref_mid1_priority}}, 中2:{{t.pref_mid2_priority}}, 中3:{{t.pref_mid3_priority}}
-                        </td>
-                        <td style="text-align: right;">
-                            <a href="/teacher/edit/{{t.id}}" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">編集</a>
-                            <a href="/teacher/delete/{{t.id}}" class="btn btn-outline btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="return confirm('本当に削除しますか？')">削除</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <div style="margin-top: 1.5rem; text-align: right;">
-            <button class="btn btn-outline">出席状況を保存</button>
-        </div>
-    </form>
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>登録</th>
+                    <th>出席</th>
+                    <th>氏名</th>
+                    <th>ユーザID</th>
+                    <th>年齢</th>
+                    <th>性別</th>
+                    {% if event_info and event_info.name == '学習会' %}
+                    {% if not (event_info.status == '実施後') %}
+                    <th>会場</th>
+                    <th>前半</th>
+                    <th>後半</th>
+                    {% endif %}
+                    {% if event_info and event_info.status == '実施後' %}
+                    <th>学習の達成度</th>
+                    <th>生徒との相性</th>
+                    {% endif %}
+                    {% endif %}
+                    <th style="text-align: right;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in teachers %}
+                <tr>
+                    <td>
+                        {% set att = t.attendance %}
+                        {% if att and att.id %}
+                            {% if not (event_info and event_info.status == '実施後') %}
+                                {{ '★' if att.updated_by == 'user' else '☆' }}
+                            {% elif not (event_info and (event_info.status == '実施前' or event_info.status == '実施')) %}
+                                {% if att.achievement and att.compatibility %}
+                                    {{ '★' if att.updated_by == 'user' else '☆' }}
+                                {% endif %}
+                            {% endif %}
+                        {% else %}
+                            &nbsp;
+                        {% endif %}
+                    </td>
+                    <td>
+                        <input type="checkbox" name="attend_{{t.id}}" value="true" {{ 'checked' if t.attendance and t.attendance.attend }} 
+                               style="width: 1.5rem; height: 1.5rem;" 
+                               class="{{ 'disabled-checkbox' if is_disabled or (event_info and event_info.publish_to == '生徒') }}"
+                               onchange="toggleAttendance(this, '{{t.id}}')" {{ 'disabled' if is_disabled or (event_info and event_info.publish_to == '生徒') }}>
+                    </td>
+                    <td><strong>{{t.name}}</strong></td>
+                    <td>{{t.user.username if t.user else '-'}}</td>
+                    <td>{{t.age}}</td>
+                    <td>{{t.gender}}</td>
+
+                    {% if event_info and event_info.name == '学習会' %}
+                    {% if not (event_info.status == '実施後') %}
+                    <td>
+                        <select name="venue_id_{{t.id}}" style="font-size: 0.8rem; padding: 0.2rem;" {{ 'disabled' if is_disabled }}>
+                            {% if not venues %}
+                            <option value="">設定なし</option>
+                            {% endif %}
+                            {% for venue in venues %}
+                            <option value="{{ venue.id }}" {{ 'selected' if (t.attendance and t.attendance.venue_id == venue.id) or (not t.attendance and t.default_venue_id == venue.id) }}>{{ venue.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <select name="sub1_{{t.id}}" id="sub1_{{t.id}}" style="font-size: 0.8rem; padding: 0.2rem;" {{ 'disabled' if is_disabled or (not (t.attendance and t.attendance.attend) and not (not t.attendance and t.attend)) }}>
+                            <option value="出席" {{ 'selected' if (t.attendance.subject1 if t.attendance else '欠席') == '出席' }}>出席</option>
+                            <option value="欠席" {{ 'selected' if (t.attendance.subject1 if t.attendance else '欠席') == '欠席' }}>欠席</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="sub2_{{t.id}}" id="sub2_{{t.id}}" style="font-size: 0.8rem; padding: 0.2rem;" {{ 'disabled' if is_disabled or (not (t.attendance and t.attendance.attend) and not (not t.attendance and t.attend)) }}>
+                            <option value="出席" {{ 'selected' if (t.attendance.subject2 if t.attendance else '欠席') == '出席' }}>出席</option>
+                            <option value="欠席" {{ 'selected' if (t.attendance.subject2 if t.attendance else '欠席') == '欠席' }}>欠席</option>
+                        </select>
+                    </td>
+                    {% endif %}
+                    {% if event_info and event_info.status == '実施後' %}
+                    <td>
+                        <select name="achievement_{{t.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
+                            <option value="4" {{ 'selected' if (t.attendance.achievement if t.attendance else 0) == 4 }}>とてもよくできた</option>
+                            <option value="3" {{ 'selected' if (t.attendance.achievement if t.attendance else 0) == 3 }}>できた</option>
+                            <option value="2" {{ 'selected' if (t.attendance.achievement if t.attendance else 0) == 2 }}>あまりできなかった</option>
+                            <option value="1" {{ 'selected' if (t.attendance.achievement if t.attendance else 0) == 1 }}>できなかった</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="compatibility_{{t.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
+                            <option value="4" {{ 'selected' if (t.attendance.compatibility if t.attendance else 0) == 4 }}>とても良かった</option>
+                            <option value="3" {{ 'selected' if (t.attendance.compatibility if t.attendance else 0) == 3 }}>良かった</option>
+                            <option value="2" {{ 'selected' if (t.attendance.compatibility if t.attendance else 0) == 2 }}>あまり良くなかった</option>
+                            <option value="1" {{ 'selected' if (t.attendance.compatibility if t.attendance else 0) == 1 }}>良くなかった</option>
+                        </select>
+                    </td>
+                    {% endif %}
+                    {% endif %}
+                    <td style="text-align: right; display: flex; gap: 0.2rem;">
+                        <button type="button" class="btn btn-primary" style="padding: 0.4rem 0.6rem; font-size: 0.75rem;" onclick="submitAttendance('{{t.id}}')" {{ 'disabled' if is_disabled or (event_info and event_info.publish_to == '生徒') }}>保存</button>
+                        <a href="/teacher/edit/{{t.id}}" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">編集</a>
+                        <a href="/teacher/delete/{{t.id}}" class="btn btn-outline btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="return confirm('本当に削除しますか？')">削除</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
+</div>
+
+<style>
+    select:disabled, input[type="checkbox"]:disabled, button:disabled, .disabled-checkbox {
+        background-color: #e9ecef;
+        color: #6c757d;
+        border: 1px solid #ced4da;
+    }
+</style>
+
+<script>
+    function toggleAttendance(checkbox, teacherId) {
+        const sub1 = document.getElementById('sub1_' + teacherId);
+        const sub2 = document.getElementById('sub2_' + teacherId);
+        
+        if (sub1 && sub2) {
+            if (checkbox.checked) {
+                sub1.disabled = false;
+                sub2.disabled = false;
+                sub1.value = '出席';
+                sub2.value = '出席';
+            } else {
+                sub1.disabled = true;
+                sub2.disabled = true;
+                sub1.value = '欠席';
+                sub2.value = '欠席';
+            }
+        }
+    }
+
+    function submitAttendance(teacherId) {
+        const attend = document.querySelector('input[name="attend_' + teacherId + '"]').checked;
+        const sub1 = document.getElementById('sub1_' + teacherId);
+        const sub2 = document.getElementById('sub2_' + teacherId);
+        
+        if (attend && sub1.value === '欠席' && sub2.value === '欠席') {
+            alert('出席チェックが入っている講師の前半・後半が両方欠席です。');
+            return;
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/teacher/attend_save_individual';
+        
+        const inputs = {
+            'teacher_id': teacherId,
+            'event_id': '{{event_info.id if event_info else ""}}',
+            'attend': attend ? 'true' : 'false',
+            'venue_id': document.querySelector('select[name="venue_id_' + teacherId + '"]').value,
+            'sub1': sub1.value,
+            'sub2': sub2.value
+        };
+        
+        for (const [name, value] of Object.entries(inputs)) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+        }
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+</script>
 
 {% endblock %}

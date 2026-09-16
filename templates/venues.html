@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="header">
+    <h1>会場一覧</h1>
+    <h2 style="font-size: 1.25rem;">{{ session.get('org_name', '不明') }}</h2>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>会場名</th>
+                    <th style="text-align: right;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for venue in venues %}
+                <tr>
+                    <td><strong>{{ venue.name }}</strong></td>
+                    <td style="text-align: right;">
+                        <button class="btn btn-outline" onclick="editVenue('{{ venue.id }}', '{{ venue.name }}')">編集</button>
+                        <a href="{{ url_for('venue_delete', id=venue.id) }}" class="btn btn-outline btn-danger" onclick="return confirm('本当に削除しますか？')">削除</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 1rem;">
+    <h2 id="formTitle">会場追加</h2>
+    <form action="{{ url_for('venue_save') }}" method="post">
+        <input type="hidden" name="id" id="venueId">
+        <div style="display: flex; gap: 0.5rem;">
+            <input type="text" name="name" id="venueName" placeholder="会場名" required class="form-control">
+            <button type="submit" class="btn btn-primary" id="btnSubmit">追加</button>
+            <button type="button" class="btn btn-outline" id="btnCancel" style="display: none;" onclick="resetForm()">キャンセル</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    function editVenue(id, name) {
+        document.getElementById('venueId').value = id;
+        document.getElementById('venueName').value = name;
+        document.getElementById('formTitle').innerText = '会場編集';
+        document.getElementById('btnSubmit').innerText = '更新';
+        document.getElementById('btnCancel').style.display = 'inline-block';
+    }
+
+    function resetForm() {
+        document.getElementById('venueId').value = '';
+        document.getElementById('venueName').value = '';
+        document.getElementById('formTitle').innerText = '会場追加';
+        document.getElementById('btnSubmit').innerText = '追加';
+        document.getElementById('btnCancel').style.display = 'none';
+    }
+</script>
+
+{% endblock %}

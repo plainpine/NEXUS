@@ -13,22 +13,80 @@
         <span>NEXUS</span>
     </a>
     <nav class="nav-links">
+        {% if current_user.is_admin %}
+        <a href="/events" class="nav-item {{ 'active' if request.path == '/events' }}">
+            <i>📋</i> イベント管理
+        </a>
+        <a href="/event/select" class="nav-item {{ 'active' if request.path == '/event/select' }}">
+            <i>📅</i> イベント一覧
+        </a>
+        <a href="/venues" class="nav-item {{ 'active' if request.path == '/venues' }}">
+            <i>📍</i> 会場一覧
+        </a>
+        <a href="/settings" class="nav-item {{ 'active' if request.path == '/settings' }}">
+            <i>⚙️</i> デフォルト設定
+        </a>
+
         <a href="/teachers" class="nav-item {{ 'active' if request.path == '/teachers' }}">
-            <i>👥</i> 講師一覧
+            <i>🧑‍🏫</i> 講師一覧
         </a>
         <a href="/students" class="nav-item {{ 'active' if request.path == '/students' }}">
             <i>🎓</i> 生徒一覧
         </a>
-        <a href="/matching" class="nav-item {{ 'active' if request.path == '/matching' }}">
+        {% if session.get('selected_event_name', '')|trim == '学習会' and session.get('selected_event_status', '')|trim == '実施' %}
+        <a href="/matching/setup" class="nav-item {{ 'active' if request.path == '/matching/setup' }}">
             <i>🔄</i> マッチング実行
         </a>
         <a href="/result" class="nav-item {{ 'active' if request.path == '/result' }}">
             <i>📊</i> マッチング結果
         </a>
+        {% endif %}
+        {% if current_user.is_super_admin %}
+        <a href="/users" class="nav-item {{ 'active' if request.path == '/users' }}">
+            <i>⚙️</i> 管理者一覧
+        </a>
+        <a href="/organizations" class="nav-item {{ 'active' if request.path == '/organizations' }}">
+            <i>🏢</i> 組織一覧
+        </a>
+        {% endif %}
+
+        {% elif current_user.student_record %}
+        <a href="{{ url_for('student_dashboard') }}" class="nav-item {{ 'active' if request.path == '/student/dashboard' }}">
+            <i>👤</i> 出席確認
+        </a>
+        <a href="{{ url_for('post_study_session') }}" class="nav-item {{ 'active' if request.path == '/post_study_session' }}">
+            <i>🎓</i> 学習会実施
+        </a>
+        <a href="{{ url_for('student_edit', id=current_user.student_record.id) }}" class="nav-item {{ 'active' if request.path == url_for('student_edit', id=current_user.student_record.id) }}">
+            <i>👤</i> プロフィール
+        </a>
+        {% elif current_user.teacher_record %}
+        <a href="{{ url_for('teacher_dashboard') }}" class="nav-item {{ 'active' if request.path == '/teacher/dashboard' }}">
+            <i>👤</i> 出席確認
+        </a>
+        <a href="{{ url_for('post_study_session') }}" class="nav-item {{ 'active' if request.path == '/post_study_session' }}">
+            <i>🎓</i> 学習会実施
+        </a>
+        <a href="{{ url_for('teacher_edit', id=current_user.teacher_record.id) }}" class="nav-item {{ 'active' if request.path == url_for('teacher_edit', id=current_user.teacher_record.id) }}">
+            <i>👤</i> プロフィール
+        </a>
+        {% endif %}
+        <a href="{{ url_for('logout') }}" class="nav-item">
+            <i>🚪</i> ログアウト
+        </a>
     </nav>
 </aside>
 
 <main class="main-content">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div style="background-color: #d4edda; color: #155724; padding: 1rem; margin-bottom: 1rem; border: 1px solid #c3e6cb; border-radius: 0.25rem;">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
     {% block content %}{% endblock %}
 </main>
 

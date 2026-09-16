@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="header">
+    <h1>{{ '管理者情報の編集' if user and user.id != 0 else '管理者追加' }}</h1>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <form action="{{ url_for('user_add') }}" method="post">
+        <div class="form-group">
+            <label for="name">名前</label>
+            <input name="name" id="name" required placeholder="氏名を入力" value="{{ user.name if user else '' }}">
+        </div>
+        <div class="form-group">
+            <label for="username">ユーザID</label>
+            <input name="username" id="username" required placeholder="ユーザID" value="{{ user.username if user else '' }}" {{ 'readonly' if user }}>
+        </div>
+        <div class="form-group">
+            <label for="password">パスワード</label>
+            <input type="password" name="password" id="password" {{ 'required' if not user or user.id == 0 else '' }} placeholder="パスワードを入力">
+        </div>
+        
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" name="is_org_admin" 
+                       {{ 'checked' if (user and user.is_org_admin and not user.is_super_admin) or not user }} 
+                       {{ 'disabled' if user and user.is_super_admin }} 
+                       style="width: 1.5rem; height: 1.5rem;"> 
+                組織管理者
+            </label>
+            {% if user and user.is_super_admin %}
+            <input type="hidden" name="is_org_admin" value="on">
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <label for="organization_id">所属組織</label>
+            <select name="organization_id" id="organization_id" required>
+                {% for org in organizations %}
+                <option value="{{ org.id }}" {{ 'selected' if user and user.organization_id == org.id }}>{{ org.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button class="btn btn-primary">保存する</button>
+            <a href="{{ url_for('users') }}" class="btn btn-outline">キャンセル</a>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

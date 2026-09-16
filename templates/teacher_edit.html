@@ -3,31 +3,37 @@
 {% block content %}
 
 <div class="header">
-    <h1>{{ '講師の編集' if teacher else '講師の追加' }}</h1>
+    <h1>{{ '講師のプロフィール' if teacher else '講師の追加' }}</h1>
 </div>
+
+{% if error %}
+<div style="background-color: #f8d7da; color: #721c24; padding: 1rem; margin-bottom: 1rem; border: 1px solid #f5c6cb; border-radius: 0.25rem;">
+    {{ error }}
+</div>
+{% endif %}
 
 <div class="card" style="max-width: 600px;">
     <form method="post">
         <div class="form-group">
-            <label for="name">名前</label>
-            <input name="name" id="name" required placeholder="氏名を入力" value="{{ teacher.name if teacher else '' }}">
+            <label for="name">氏名</label>
+            <input name="name" id="name" required placeholder="氏名を入力" value="{{ teacher.name if teacher else '' }}" 
+                   {% if not is_admin and teacher %}readonly style="background-color: #e9ecef;"{% endif %}>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label for="age">年齢層</label>
                 <select name="age" id="age">
-                    <option {{ 'selected' if teacher and teacher.age == '10～20代' }}>10～20代</option>
-                    <option {{ 'selected' if teacher and teacher.age == '30～40代' }}>30～40代</option>
-                    <option {{ 'selected' if teacher and teacher.age == '50代以上' }}>50代以上</option>
+                    <option {{ 'selected' if teacher and teacher.age == 'ヤング' }}>ヤング</option>
+                    <option {{ 'selected' if teacher and teacher.age == 'アダルト' }}>アダルト</option>
                 </select>
             </div>
 
             <div class="form-group">
                 <label for="gender">性別</label>
                 <select name="gender" id="gender">
-                    <option {{ 'selected' if teacher and teacher.gender == '男性' }}>男性</option>
-                    <option {{ 'selected' if teacher and teacher.gender == '女性' }}>女性</option>
+                    <option {{ 'selected' if teacher and teacher.gender == '男' }}>男</option>
+                    <option {{ 'selected' if teacher and teacher.gender == '女' }}>女</option>
                 </select>
             </div>
         </div>
@@ -78,46 +84,49 @@
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);">
         
-        <h3 style="margin-bottom: 1rem; font-size: 1rem;">希望する生徒の条件</h3>
+        <h3 style="margin-bottom: 1rem; font-size: 1rem;">希望する条件</h3>
         <div class="form-group">
-            <label for="pref_gender">希望性別</label>
+            <label for="default_venue_id">デフォルトの会場</label>
+            <select name="default_venue_id" id="default_venue_id" style="max-width: 200px;">
+                {% if not venues %}
+                <option value="">設定なし</option>
+                {% endif %}
+                {% for venue in venues %}
+                <option value="{{ venue.id }}" {{ 'selected' if teacher and teacher.default_venue_id == venue.id }}>{{ venue.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="pref_gender">希望する生徒の性別</label>
             <select name="pref_gender" id="pref_gender" style="max-width: 200px;">
                 <option {{ 'selected' if teacher and teacher.pref_gender == '不問' }}>不問</option>
                 <option {{ 'selected' if teacher and teacher.pref_gender == '男' }}>男</option>
                 <option {{ 'selected' if teacher and teacher.pref_gender == '女' }}>女</option>
             </select>
         </div>
-        <label>学年別の優先度 (1:高, 2:中, 3:低)</label>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
-            <div class="form-group">
-                <label style="font-size: 0.75rem;">中1</label>
-                <select name="pref_mid1_priority">
-                    <option value="1" {{ 'selected' if teacher and teacher.pref_mid1_priority == 1 }}>1</option>
-                    <option value="2" {{ 'selected' if not teacher or teacher.pref_mid1_priority == 2 }}>2</option>
-                    <option value="3" {{ 'selected' if teacher and teacher.pref_mid1_priority == 3 }}>3</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label style="font-size: 0.75rem;">中2</label>
-                <select name="pref_mid2_priority">
-                    <option value="1" {{ 'selected' if teacher and teacher.pref_mid2_priority == 1 }}>1</option>
-                    <option value="2" {{ 'selected' if not teacher or teacher.pref_mid2_priority == 2 }}>2</option>
-                    <option value="3" {{ 'selected' if teacher and teacher.pref_mid2_priority == 3 }}>3</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label style="font-size: 0.75rem;">中3</label>
-                <select name="pref_mid3_priority">
-                    <option value="1" {{ 'selected' if teacher and teacher.pref_mid3_priority == 1 }}>1</option>
-                    <option value="2" {{ 'selected' if not teacher or teacher.pref_mid3_priority == 2 }}>2</option>
-                    <option value="3" {{ 'selected' if teacher and teacher.pref_mid3_priority == 3 }}>3</option>
-                </select>
-            </div>
+        <div class="form-group">
+            <label for="grade_priority">希望する生徒の学年</label>
+            <select name="grade_priority" id="grade_priority" style="max-width: 200px;">
+                <option value="不問" {{ 'selected' if teacher and teacher.pref_mid1_priority == 2 and teacher.pref_mid2_priority == 2 and teacher.pref_mid3_priority == 2 }}>不問</option>
+                <option value="中3" {{ 'selected' if teacher and teacher.pref_mid3_priority == 1 }}>中3</option>
+                <option value="中12" {{ 'selected' if teacher and teacher.pref_mid1_priority == 1 and teacher.pref_mid2_priority == 1 }}>中12</option>
+            </select>
+        </div>
+
+        <h3 style="margin-top: 2rem;">ログイン情報</h3>
+        <div class="form-group">
+            <label for="username">ユーザID</label>
+            <input name="username" id="username" required placeholder="ユーザID" value="{{ teacher.user.username if teacher and teacher.user else '' }}" 
+                   {% if teacher %}readonly style="background-color: #e9ecef;"{% endif %}>
+        </div>
+        <div class="form-group">
+            <label for="password">パスワード</label>
+            <input type="password" name="password" id="password" {{ 'required' if not teacher else '' }} placeholder="パスワードを入力">
         </div>
 
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
             <button class="btn btn-primary">保存する</button>
-            <a href="/teachers" class="btn btn-outline">キャンセル</a>
+            <a href="{{ url_for('teachers') if current_user.is_admin else url_for('teacher_dashboard') }}" class="btn btn-outline">キャンセル</a>
         </div>
     </form>
 </div>

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="header">
+    <h1>組織一覧</h1>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>組織名</th>
+                    <th style="text-align: right;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for org in organizations %}
+                <tr>
+                    <td><strong>{{ org.name }}</strong></td>
+                    <td style="text-align: right;">
+                        <a href="{{ url_for('org_delete', id=org.id) }}" class="btn btn-outline btn-danger" onclick="return confirm('本当に削除しますか？組織内のデータも削除される可能性があります。')">削除</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 1rem;">
+    <h2>組織を追加</h2>
+    <form action="{{ url_for('org_add') }}" method="post">
+        <div style="display: flex; gap: 0.5rem;">
+            <input type="text" name="name" placeholder="組織名" required class="form-control">
+            <button type="submit" class="btn btn-primary">追加</button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

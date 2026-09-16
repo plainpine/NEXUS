@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header">
+    <h1>マッチング設定</h1>
+</div>
+
+<div class="card">
+    <form action="/matching/setup" method="post">
+        <label>学習会を選択: </label>
+        <select name="event_id" onchange="this.form.submit()">
+            <option value="">-- 選択してください --</option>
+            {% for event in events %}
+            <option value="{{event.id}}" {{ 'selected' if selected_event and selected_event.id == event.id }}>
+                {{ event.date.strftime('%Y-%m-%d') }} - {{ event.name }}
+            </option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+{% if selected_event %}
+<div class="card">
+<style>
+    .matching-table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid #ddd;
+    }
+    .matching-table th, .matching-table td {
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        text-align: left;
+    }
+    .matching-table tr:last-child td {
+        border-bottom: 1px solid #ddd;
+    }
+    .col-name { width: 30%; }
+    .col-info1 { width: 15%; }
+    .col-info2 { width: 15%; }
+    .col-subject { width: 20%; }
+</style>
+
+<div class="card">
+    <h3>{{ selected_event.date.strftime('%Y-%m-%d') }} - {{ selected_event.name }} の出席者</h3>
+    
+    <h4>講師</h4>
+    <table class="matching-table">
+        <thead>
+            <tr>
+                <th class="col-name">氏名</th>
+                <th class="col-info1">年齢</th>
+                <th class="col-info2">性別</th>
+                <th class="col-subject">前半</th>
+                <th class="col-subject">後半</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in teachers %}
+            <tr>
+                <td>{{ t.name }}</td>
+                <td>{{ t.age }}</td>
+                <td>{{ t.gender }}</td>
+                <td>{{ t.attendance.subject1 if t.attendance and t.attendance.attend else '-' }}</td>
+                <td>{{ t.attendance.subject2 if t.attendance and t.attendance.attend else '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h4>生徒</h4>
+    <table class="matching-table">
+        <thead>
+            <tr>
+                <th class="col-name">氏名</th>
+                <th class="col-info1">学年</th>
+                <th class="col-info2">性別</th>
+                <th class="col-subject">前半科目</th>
+                <th class="col-subject">後半科目</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in students %}
+            <tr>
+                <td>{{ s.name }}</td>
+                <td>{{ s.grade }}</td>
+                <td>{{ s.gender }}</td>
+                <td>{{ s.attendance.subject1 if s.attendance and s.attendance.attend else '-' }}</td>
+                <td>{{ s.attendance.subject2 if s.attendance and s.attendance.attend else '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div style="margin-top: 1rem;">
+        <form action="/matching" method="post">
+            <input type="hidden" name="event_id" value="{{selected_event.id}}">
+            <button type="submit" class="btn btn-primary">この内容でマッチング実行</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

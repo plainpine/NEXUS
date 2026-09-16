@@ -12,7 +12,14 @@
     <h1>NEXUS</h1>
     <p>マッチングシステムへログイン</p>
     <form method="post">
-        <button class="btn btn-primary" style="width: 100%;">ログイン</button>
+        {% if request.args.get('error') %}
+        <div style="color: red; margin-bottom: 10px; font-weight: bold;">
+            {{ request.args.get('error') }}
+        </div>
+        {% endif %}
+        <input type="text" name="username" placeholder="ユーザID" required style="width: 100%; margin-bottom: 10px;">
+        <input type="password" name="password" placeholder="パスワード" required style="width: 100%; margin-bottom: 10px;">
+        <button type="submit" class="btn btn-primary" style="width: 100%;">ログイン</button>
     </form>
 </div>
 

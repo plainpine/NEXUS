@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header">
+    <h1>デフォルト設定</h1>
+    <h2 style="font-size: 1.25rem;">{{ current_user.organization.name if current_user.is_super_admin else session.get('org_name', '不明') }}</h2>
+</div>
+
+{% if saved %}
+<div class="alert alert-success" style="background-color: #d4edda; color: #155724; padding: 1rem; margin-bottom: 1rem; border: 1px solid #c3e6cb; border-radius: 0.25rem;">
+    保存しました
+</div>
+{% endif %}
+
+<div class="card">
+    <form action="/settings" method="post">
+        <h3>学習会 デフォルト設定</h3>
+        <div style="margin-bottom: 1rem;">
+            <label>時間 - 講師: <input type="time" name="学習会_teacher_start" value="{{ configs.get('学習会_teacher_start', '10:00') }}"> - <input type="time" name="学習会_teacher_end" value="{{ configs.get('学習会_teacher_end', '17:00') }}"></label>
+            <label>時間 - 生徒: <input type="time" name="学習会_student_start" value="{{ configs.get('学習会_student_start', '10:00') }}"> - <input type="time" name="学習会_student_end" value="{{ configs.get('学習会_student_end', '17:00') }}"></label>
+            <label>公開先: 
+                <select name="学習会_publish_to">
+                    <option value="両方" {{ 'selected' if configs.get('学習会_publish_to') == '両方' }}>両方</option>
+                    <option value="講師" {{ 'selected' if configs.get('学習会_publish_to') == '講師' }}>講師</option>
+                    <option value="生徒" {{ 'selected' if configs.get('学習会_publish_to') == '生徒' }}>生徒</option>
+                </select>
+            </label>
+        </div>
+
+        <h3>会議 デフォルト設定</h3>
+        <div style="margin-bottom: 1rem;">
+            <label>時間 - 講師: <input type="time" name="会議_teacher_start" value="{{ configs.get('会議_teacher_start', '13:00') }}"> - <input type="time" name="会議_teacher_end" value="{{ configs.get('会議_teacher_end', '15:00') }}"></label>
+            <label>時間 - 生徒: <input type="time" name="会議_student_start" value="{{ configs.get('会議_student_start', '13:00') }}"> - <input type="time" name="会議_student_end" value="{{ configs.get('会議_student_end', '15:00') }}"></label>
+            <label>公開先: 
+                <select name="会議_publish_to">
+                    <option value="両方" {{ 'selected' if configs.get('会議_publish_to') == '両方' }}>両方</option>
+                    <option value="講師" {{ 'selected' if configs.get('会議_publish_to') == '講師' }}>講師</option>
+                    <option value="生徒" {{ 'selected' if configs.get('会議_publish_to') == '生徒' }}>生徒</option>
+                </select>
+            </label>
+        </div>
+        <button type="submit" class="btn btn-primary">保存</button>
+    </form>
+</div>
+{% endblock %}

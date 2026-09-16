@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="header">
+    <h1>イベント管理</h1>
+    <h2 style="font-size: 1.25rem;">{{ current_user.organization.name if current_user.is_super_admin else session.get('org_name', '不明') }}</h2>
+</div>
+
+<div class="card">
+    <form action="/event/save" method="post" id="eventForm">
+        <input type="hidden" name="id" id="eventId">
+        <div style="margin-bottom: 1rem;">
+            <label>日程: </label>
+            <input type="date" name="date" id="eventDate" required class="form-control">
+            <label>イベント: </label>
+            <select name="event_type" id="eventType" class="form-control" onchange="updateDefaultTimes()">
+                <option value="学習会">学習会</option>
+                <option value="会議">会議</option>
+                <option value="そのほか">そのほか</option>
+            </select>
+            <input type="text" name="custom_event_name" id="customEventName" placeholder="イベント名" class="form-control" style="display: none;">
+            <label>公開先: </label>
+            <select name="publish_to" id="publishTo" class="form-control">
+                <option value="両方">両方</option>
+                <option value="講師">講師</option>
+                <option value="生徒">生徒</option>
+            </select>
+            <label>状態: </label>
+            <select name="status" id="status" class="form-control">
+                <option value="公開前">公開前</option>
+                <option value="実施前">実施前</option>
+                <option value="実施">実施</option>
+                <option value="実施後">実施後</option>
+                <option value="完了">完了</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap;">
+            <div><label>講師開始: </label><input type="time" name="teacher_start" id="teacherStart" class="form-control"></div>
+            <div><label>講師終了: </label><input type="time" name="teacher_end" id="teacherEnd" class="form-control"></div>
+            <div><label>生徒開始: </label><input type="time" name="student_start" id="studentStart" class="form-control"></div>
+            <div><label>生徒終了: </label><input type="time" name="student_end" id="studentEnd" class="form-control"></div>
+        </div>
+        <button type="submit" class="btn btn-primary">保存</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>日程</th>
+                    <th>イベント名</th>
+                    <th>講師時間</th>
+                    <th>生徒時間</th>
+                    <th>公開先</th>
+                    <th>状態</th>
+                    <th style="text-align: right;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in events %}
+                <tr>
+                    <td>{{ e.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ e.name }}</td>
+                    <td>{{ e.teacher_start }} - {{ e.teacher_end }}</td>
+                    <td>{{ e.student_start }} - {{ e.student_end }}</td>
+                    <td>{{ e.publish_to }}</td>
+                    <td>{{ e.status }}</td>
+                    <td style="text-align: right;">
+                        <button class="btn btn-outline" onclick="editEvent('{{ e.id }}', '{{ e.date.strftime('%Y-%m-%d') }}', '{{ e.name }}', '{{ e.teacher_start }}', '{{ e.teacher_end }}', '{{ e.student_start }}', '{{ e.student_end }}', '{{ e.publish_to }}', '{{ e.status }}')">編集</button>
+                        <a href="/event/delete/{{ e.id }}" class="btn btn-outline btn-danger" onclick="return confirm('本当に削除しますか？')">削除</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const defaultConfigs = {{ configs|tojson|safe }};
+
+    function updateDefaultTimes() {
+        const typeSelect = document.getElementById('eventType');
+        const customInput = document.getElementById('customEventName');
+        const eventType = typeSelect.value;
+        const publishTo = document.getElementById('publishTo');
+
+        if (eventType === 'そのほか') {
+            customInput.style.display = 'block';
+            customInput.required = true;
+        } else {
+            customInput.style.display = 'none';
+            customInput.required = false;
+            
+            // デフォルト値をセット
+            document.getElementById('teacherStart').value = defaultConfigs[eventType + '_teacher_start'] || '10:00';
+            document.getElementById('teacherEnd').value = defaultConfigs[eventType + '_teacher_end'] || '17:00';
+            document.getElementById('studentStart').value = defaultConfigs[eventType + '_student_start'] || '10:00';
+            document.getElementById('studentEnd').value = defaultConfigs[eventType + '_student_end'] || '17:00';
+            publishTo.value = defaultConfigs[eventType + '_publish_to'] || '両方';
+        }
+    }
+
+    function editEvent(id, date, name, tStart, tEnd, sStart, sEnd, publishTo, status) {
+        document.getElementById('eventId').value = id;
+        document.getElementById('eventDate').value = date;
+        document.getElementById('teacherStart').value = tStart;
+        document.getElementById('teacherEnd').value = tEnd;
+        document.getElementById('studentStart').value = sStart;
+        document.getElementById('studentEnd').value = sEnd;
+        document.getElementById('publishTo').value = publishTo;
+        document.getElementById('status').value = status;
+        
+        const typeSelect = document.getElementById('eventType');
+        const customInput = document.getElementById('customEventName');
+        
+        if (['学習会', '会議'].includes(name)) {
+            typeSelect.value = name;
+            customInput.style.display = 'none';
+        } else {
+            typeSelect.value = 'そのほか';
+            customInput.value = name;
+            customInput.style.display = 'block';
+        }
+    }
+
+    // 初期化時にデフォルトを設定
+    window.onload = updateDefaultTimes;
+</script>
+
+{% endblock %}

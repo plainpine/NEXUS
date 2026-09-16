@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header">
+    <h1>イベント一覧</h1>
+    <h2 style="font-size: 1.25rem;">{{ current_user.organization.name if current_user.is_super_admin else session.get('org_name', '不明') }}</h2>
+</div>
+
+<div class="card">
+    <form action="/event/select" method="post">
+        <label>学習会またはその他イベントを選択: </label>
+        <select name="event_id" onchange="this.form.submit()">
+            <option value="">-- 未選択 --</option>
+            {% for event in events %}
+            {% if event.status in ['実施前', '実施', '実施後'] %}
+            <option value="{{event.id}}" {{ 'selected' if session.get('selected_event_id') == event.id or (session.get('selected_event_id') == None and event.status == '実施') }}>
+                {{ event.date.strftime('%Y-%m-%d') }} - {{ event.name }} ({{ event.status }})
+            </option>
+            {% endif %}
+            {% endfor %}
+        </select>
+    </form>
+</div>
+{% endblock %}

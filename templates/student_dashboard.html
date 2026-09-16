@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header">
+    <h1>出席確認</h1>
+</div>
+
+{% if request.args.get('error') %}
+<div style="margin-top: 1rem; color: red; font-weight: bold; background: #fee; padding: 10px; border: 1px solid red; border-radius: 4px;">
+    {{ request.args.get('error') }}
+</div>
+{% endif %}
+
+<style>
+    .large-checkbox { width: 25px; height: 25px; cursor: pointer; }
+    input:disabled, select:disabled { background-color: #e0e0e0; }
+</style>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>登録</th>
+                    <th>日程</th>
+                    <th>時刻</th>
+                    <th>イベント名</th>
+                    <th>会場</th>
+                    <th>出席</th>
+                    <th>前半科目</th>
+                    <th>後半科目</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in events %}
+                {% set att = all_attendances.get(event.id) %}
+                {% set is_study = (event.name == '学習会') %}
+                
+                <form id="form_{{event.id}}" action="/event/attendance/save" method="post">
+                    <input type="hidden" name="event_id" value="{{event.id}}">
+                </form>
+                
+                <tr>
+                    <td>
+                        {% if att %}
+                            {% if att.updated_by == 'user' %}★
+                            {% elif att.updated_by == 'admin' %}☆
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    <td>{{ event.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ event.student_start }} - {{ event.student_end }}</td>
+                    <td>{{ event.name }}</td>
+                    <td>
+                        {% if is_study %}
+                        <select name="venue_id" id="venue_{{event.id}}" form="form_{{event.id}}" class="subject-input">
+                            {% if not venues %}
+                            <option value="">設定なし</option>
+                            {% endif %}
+                            {% for venue in venues %}
+                            <option value="{{ venue.id }}" {{ 'selected' if att and att.venue_id == venue.id }}>{{ venue.name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        <input type="checkbox" name="attend" value="true" form="form_{{event.id}}" class="large-checkbox attend-checkbox" data-event-id="{{event.id}}"
+                               {{ 'checked' if att and att.attend }}>
+                    </td>
+                    <td>
+                        {% if is_study %}
+                        <select name="subject1" id="sub1_{{event.id}}" form="form_{{event.id}}" class="subject-input" {{ 'disabled' if not (att and att.attend) }}>
+                            {% for sub in ['数学', '英語', '国語', '理科', '社会', 'なし'] %}
+                            <option value="{{sub}}" {{ 'selected' if (att.subject1 if att else 'なし') == sub }}>{{sub}}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        &nbsp;
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if is_study %}
+                        <select name="subject2" id="sub2_{{event.id}}" form="form_{{event.id}}" class="subject-input" {{ 'disabled' if not (att and att.attend) }}>
+                            {% for sub in ['数学', '英語', '国語', '理科', '社会', 'なし'] %}
+                            <option value="{{sub}}" {{ 'selected' if (att.subject2 if att else 'なし') == sub }}>{{sub}}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        &nbsp;
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button type="submit" form="form_{{event.id}}" class="btn btn-primary">保存</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('attend-checkbox')) {
+            const eventId = e.target.getAttribute('data-event-id');
+            const sub1 = document.getElementById('sub1_' + eventId);
+            const sub2 = document.getElementById('sub2_' + eventId);
+            const isChecked = e.target.checked;
+
+            if (sub1 && sub2) {
+                sub1.disabled = !isChecked;
+                sub2.disabled = !isChecked;
+                if (isChecked && sub1.value === 'なし') {
+                    sub1.value = '数学';
+                } else if (!isChecked) {
+                    sub1.value = 'なし';
+                }
+                if (isChecked && sub2.value === 'なし') {
+                    sub2.value = '数学';
+                } else if (!isChecked) {
+                    sub2.value = 'なし';
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}
+

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="header">
+    <h1>管理者一覧</h1>
+    <a href="{{ url_for('user_edit', id=0) }}" class="btn btn-primary">
+        <span>+</span> 管理者を追加
+    </a>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ユーザID</th>
+                    <th>氏名</th>
+                    <th>権限</th>
+                    <th>所属組織</th>
+                    <th style="text-align: right;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.name if user.name else '-' }}</td>
+                    <td>{{ 'スーパー管理者' if user.is_super_admin else ('組織管理者' if user.is_org_admin else '管理者') }}</td>
+                    <td>{{ user.organization.name if user.organization else '-' }}</td>
+                    <td style="text-align: right;">
+                        <a href="{{ url_for('user_edit', id=user.id) }}" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">編集</a>
+                        {% if user.id != session['user_id'] %}
+                        <a href="{{ url_for('user_delete', id=user.id) }}" class="btn btn-outline btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="return confirm('本当に削除しますか？')">削除</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
