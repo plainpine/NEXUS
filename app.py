@@ -552,9 +552,10 @@ def teacher_edit(id):
         abort(403)
         
     if request.method == 'POST':
-        # 管理者のみ氏名を編集可能
-        if current_user.is_admin:
-            teacher.name = request.form['name']
+        # 氏名を編集可能に
+        teacher.name = request.form['name']
+        if teacher.user:
+            teacher.user.name = request.form['name']
         teacher.age = request.form['age']
         teacher.gender = request.form['gender']
         teacher.math = int(request.form['math'])
@@ -787,9 +788,10 @@ def student_edit(id):
         abort(403)
         
     if request.method == 'POST':
-        # 管理者のみ氏名を編集可能
-        if current_user.is_admin:
-            student.name = request.form['name']
+        # 氏名を編集可能に
+        student.name = request.form['name']
+        if student.user:
+            student.user.name = request.form['name']
         student.grade = request.form['grade']
         student.gender = request.form['gender']
         student.pref_gender = request.form['pref_gender']

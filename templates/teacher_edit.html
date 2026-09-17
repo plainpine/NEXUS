@@ -16,8 +16,7 @@
     <form method="post">
         <div class="form-group">
             <label for="name">氏名</label>
-            <input name="name" id="name" required placeholder="氏名を入力" value="{{ teacher.name if teacher else '' }}" 
-                   {% if not is_admin and teacher %}readonly style="background-color: #e9ecef;"{% endif %}>
+            <input name="name" id="name" required placeholder="氏名を入力" value="{{ teacher.name if teacher else '' }}">
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
