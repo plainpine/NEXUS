@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .evaluation-table {
+        width: 100%;
+        table-layout: fixed; /* 列幅を固定して見切れを防ぐ */
+        border-collapse: collapse;
+    }
+    .evaluation-table th, .evaluation-table td {
+        padding: 8px;
+        border: 1px solid #ddd;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .evaluation-table th {
+        background-color: #f2f2f2;
+    }
+</style>
+
+<div class="header">
+    <h1>生徒評価</h1>
+</div>
+
+<div style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #ccc; background-color: #f9f9f9;">
+    <h3>評価基準</h3>
+    <p>
+        <strong>学習進捗度:</strong> 
+        4: とてもよくできた, 3: よくできた, 2: あまりできなかった, 1: できなかった
+    </p>
+    <p>
+        <strong>学習しやすさ:</strong> 
+        4: とても学習しやすい, 3: 学習しやすい, 2: あまり学習しやすくない, 1: 学習しやすくない
+    </p>
+</div>
+
+<table class="evaluation-table">
+    <thead>
+        <tr>
+            <th style="width: 5%;">登録</th>
+            <th style="width: 15%;">生徒名</th>
+            <th style="width: 15%;">前半科目担当講師</th>
+            <th style="width: 10%;">前半：学習進捗度</th>
+            <th style="width: 10%;">前半：学習しやすさ</th>
+            <th style="width: 15%;">後半科目担当講師</th>
+            <th style="width: 10%;">後半：学習進捗度</th>
+            <th style="width: 10%;">後半：学習しやすさ</th>
+            <th style="width: 10%;">操作</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in data %}
+        <form method="POST">
+            <input type="hidden" name="student_id" value="{{ item.student.id }}">
+            <tr>
+                <td>
+                    {% if item.registered_by == 'admin' %}
+                        ☆
+                    {% elif item.registered_by == 'student' %}
+                        ★
+                    {% else %}
+                        &nbsp;
+                    {% endif %}
+                </td>
+                <td>{{ item.student.name }}</td>
+                
+                <!-- 前半評価 -->
+                <td>{{ item.teachers['前半'].name if item.teachers['前半'] else '-' }}</td>
+                <td>
+                    <select name="achievement_前半" style="width: 100%;">
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if item.evals['前半'] and item.evals['前半'].achievement == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="learnability_前半" style="width: 100%;">
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if item.evals['前半'] and item.evals['前半'].learnability == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+
+                <!-- 後半評価 -->
+                <td>{{ item.teachers['後半'].name if item.teachers['後半'] else '-' }}</td>
+                <td>
+                    <select name="achievement_後半" style="width: 100%;">
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if item.evals['後半'] and item.evals['後半'].achievement == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="learnability_後半" style="width: 100%;">
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if item.evals['後半'] and item.evals['後半'].learnability == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <button type="submit" class="btn btn-primary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">保存</button>
+                </td>
+            </tr>
+        </form>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

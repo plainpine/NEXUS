@@ -1,5 +1,9 @@
 Flask==3.1.3
 Flask-SQLAlchemy==3.1.1
-openjij==0.11.6
 SQLAlchemy==2.0.49
+openjij==0.11.6
+pandas==3.0.6
+openpyxl==3.1.5
 Werkzeug==3.1.8
+blinker==1.9.0
+colorama==0.4.6

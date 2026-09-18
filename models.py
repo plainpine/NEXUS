@@ -165,3 +165,22 @@ class AdjustedMatch(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
     teacher = db.Column(db.String(50))
     student = db.Column(db.String(50))
+
+class TeacherEvaluation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    subject_type = db.Column(db.String(10)) # '前半', '後半'
+    achievement = db.Column(db.Integer)  # 1-4
+    teachability = db.Column(db.Integer) # 1-4 (教えやすさ)
+
+class StudentEvaluation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    subject_type = db.Column(db.String(10)) # '前半', '後半'
+    achievement = db.Column(db.Integer)  # 1-4
+    learnability = db.Column(db.Integer) # 1-4 (学習しやすさ)
+    registered_by = db.Column(db.String(20)) # 'student', 'admin' (未登録はNone)

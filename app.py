@@ -3,12 +3,8 @@ import json
 from functools import wraps
 from datetime import datetime
 from sqlalchemy import inspect, text
-from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue
+from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation
 from matching import simulated_annealing
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 import os
 
 app = Flask(__name__)
@@ -1338,8 +1334,15 @@ def post_study_session():
     user = User.query.get(session['user_id'])
     org_id = user.organization_id
     
-    # 実施後の学習会イベントを取得
-    events = Event.query.filter(Event.organization_id == org_id, Event.name == '学習会', Event.status == '実施後').order_by(Event.date.desc()).all()
+    # 共通のベースクエリ
+    query = Event.query.filter(Event.organization_id == org_id, Event.name == '学習会', Event.status == '実施後')
+    
+    # 生徒の場合は出席しているイベントのみ抽出
+    if user.student_record:
+        attended_event_ids = [a.event_id for a in EventAttendance.query.filter_by(user_id=user.id, attend=True).all()]
+        query = query.filter(Event.id.in_(attended_event_ids))
+    
+    events = query.order_by(Event.date.desc()).all()
     
     attendances = EventAttendance.query.filter(EventAttendance.user_id == user.id, EventAttendance.event_id.in_([e.id for e in events])).all()
     attendance_map = {a.event_id: a for a in attendances}
@@ -1351,22 +1354,29 @@ def post_study_session():
 @login_required
 def post_study_session_save():
     event_id = request.form.get('event_id')
-    user_id = session['user_id']
-    achievement = request.form.get('achievement')
-    compatibility = request.form.get('compatibility')
+    student_id = Student.query.filter_by(user_id=session['user_id']).first().id
     
-    attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=user_id).first()
-    if not attendance:
-        # この画面では既存の出席レコードに対して保存するため、存在しない場合はエラー
-        flash('出席データが見つかりません。', 'error')
-        return redirect(url_for('post_study_session'))
-    
-    attendance.achievement = achievement
-    attendance.compatibility = compatibility
-    attendance.updated_by = 'user'
+    # 前半・後半それぞれの評価を保存
+    for sub in ['前半', '後半']:
+        achievement = request.form.get(f'achievement_{sub}')
+        learnability = request.form.get(f'learnability_{sub}')
+        
+        # 該当する講師IDをTeacherEvaluationから取得
+        t_eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=student_id, subject_type=sub).first()
+        teacher_id = t_eval.teacher_id if t_eval else None
+        
+        if teacher_id:
+            eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub).first()
+            if not eval:
+                eval = StudentEvaluation(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub)
+                db.session.add(eval)
+            
+            eval.achievement = int(achievement)
+            eval.learnability = int(learnability)
+            eval.registered_by = 'student' # 生徒による登録
     
     db.session.commit()
-    flash('学習会実施状況を保存しました')
+    flash('学習会実績を保存しました')
     return redirect(url_for('post_study_session'))
 
 # 設定一覧
@@ -1389,6 +1399,147 @@ def settings():
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
     saved = request.args.get('saved', False)
     return render_template('settings.html', configs=configs, saved=saved)
+
+# 評価関連
+@app.route('/evaluation/teacher', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def evaluation_teacher():
+    event_id = session.get('selected_event_id')
+    if not event_id:
+        return redirect(url_for('event_select'))
+    
+    # 評価ラベル定義
+    achievement_map = {'4': 'とてもよくできた', '3': 'よくできた', '2': 'あまりできなかった', '1': 'できなかった'}
+    teachability_map = {'4': 'とても教えやすい', '3': '教えやすい', '2': 'あまり教えやすくない', '1': '教えやすくない'}
+    
+    # 出席している講師のみ取得
+    attendances = EventAttendance.query.filter_by(event_id=event_id, attend=True).all()
+    teacher_user_ids = [a.user_id for a in attendances if User.query.get(a.user_id) and User.query.get(a.user_id).teacher_record]
+    participating_teachers = Teacher.query.filter(Teacher.user_id.in_(teacher_user_ids)).order_by(Teacher.name).all()
+    
+    matches = AdjustedMatch.query.filter_by(event_id=event_id).all()
+    if not matches:
+        matches = MatchResult.query.filter_by(event_id=event_id).all()
+        
+    if request.method == 'POST':
+        for key, value in request.form.items():
+            if key.startswith('achievement_') or key.startswith('teachability_'):
+                # achievement_studentId_teacherId_sub
+                _, student_id, teacher_id, sub = key.split('_')
+                
+                # 新しい値をPOSTデータから取得 (講師変更に対応)
+                selected_teacher_id = int(request.form.get(f'teacher_{student_id}_{sub}'))
+                
+                eval = TeacherEvaluation.query.filter_by(event_id=event_id, teacher_id=selected_teacher_id, student_id=student_id, subject_type=sub).first()
+                if not eval:
+                    eval = TeacherEvaluation(event_id=event_id, teacher_id=selected_teacher_id, student_id=student_id, subject_type=sub)
+                    db.session.add(eval)
+                
+                if key.startswith('achievement_'):
+                    eval.achievement = int(value)
+                else:
+                    eval.teachability = int(value)
+        db.session.commit()
+        flash('評価を保存しました')
+        return redirect(url_for('evaluation_teacher'))
+
+    # 生徒単位でデータを集約
+    data_map = {}
+    for m in matches:
+        if m.student_id not in data_map:
+            data_map[m.student_id] = {
+                'student': Student.query.get(m.student_id),
+                'evals': {'前半': None, '後半': None},
+                'teachers': {'前半': m.teacher_id, '後半': m.teacher_id} # デフォルト
+            }
+        
+        # 評価取得
+        for sub in ['前半', '後半']:
+            eval = TeacherEvaluation.query.filter_by(event_id=event_id, teacher_id=m.teacher_id, student_id=m.student_id, subject_type=sub).first()
+            if eval:
+                data_map[m.student_id]['evals'][sub] = eval
+                data_map[m.student_id]['teachers'][sub] = eval.teacher_id
+
+    # ソート用にリスト化
+    data = list(data_map.values())
+    # 前半担当講師の氏名でソート
+    data.sort(key=lambda x: Teacher.query.get(x['teachers']['前半']).name if x['teachers']['前半'] else "")
+        
+    return render_template('evaluation_teacher.html', data=data, teachers=participating_teachers, 
+                           achievement_map=achievement_map, teachability_map=teachability_map)
+
+@app.route('/evaluation/student', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def evaluation_student():
+    event_id = session.get('selected_event_id')
+    if not event_id:
+        return redirect(url_for('event_select'))
+    
+    # 評価ラベル定義
+    achievement_map = {'4': 'とてもよくできた', '3': 'よくできた', '2': 'あまりできなかった', '1': 'できなかった'}
+    learnability_map = {'4': 'とても学習しやすい', '3': '学習しやすい', '2': 'あまり学習しやすくない', '1': '学習しやすくない'}
+    
+    matches = AdjustedMatch.query.filter_by(event_id=event_id).all()
+    if not matches:
+        matches = MatchResult.query.filter_by(event_id=event_id).all()
+
+    if request.method == 'POST':
+        # 個別保存処理
+        student_id = int(request.form.get('student_id'))
+        
+        # 評価保存ロジック
+        for sub in ['前半', '後半']:
+            # 該当する講師IDをTeacherEvaluationから取得
+            t_eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=student_id, subject_type=sub).first()
+            teacher_id = t_eval.teacher_id if t_eval else None
+            
+            if teacher_id:
+                eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub).first()
+                if not eval:
+                    eval = StudentEvaluation(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub)
+                    db.session.add(eval)
+                
+                eval.achievement = int(request.form.get(f'achievement_{sub}'))
+                eval.learnability = int(request.form.get(f'learnability_{sub}'))
+                eval.registered_by = 'admin' # 管理者による保存
+        
+        db.session.commit()
+        flash(f'生徒ID: {student_id} の評価を保存しました')
+        return redirect(url_for('evaluation_student'))
+
+    # 生徒単位でデータを集約
+    data_map = {}
+    for m in matches:
+        if m.student_id not in data_map:
+            data_map[m.student_id] = {
+                'student': Student.query.get(m.student_id),
+                'evals': {'前半': None, '後半': None},
+                'teachers': {'前半': None, '後半': None},
+                'registered_by': None
+            }
+        
+        # 評価と講師を取得
+        for sub in ['前半', '後半']:
+            t_eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=m.student_id, subject_type=sub).first()
+            if t_eval:
+                data_map[m.student_id]['teachers'][sub] = Teacher.query.get(t_eval.teacher_id)
+                eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=t_eval.teacher_id, student_id=m.student_id, subject_type=sub).first()
+                data_map[m.student_id]['evals'][sub] = eval
+                if eval and eval.registered_by:
+                    data_map[m.student_id]['registered_by'] = eval.registered_by
+            else:
+                # データがない場合はマッチング結果から取得
+                data_map[m.student_id]['teachers'][sub] = Teacher.query.get(m.teacher_id)
+
+    # ソート用にリスト化
+    data = list(data_map.values())
+    # 生徒名順でソート
+    data.sort(key=lambda x: x['student'].name)
+            
+    return render_template('evaluation_student.html', data=data, 
+                           achievement_map=achievement_map, learnability_map=learnability_map)
 
 if __name__ == '__main__':
     app.run(debug=True)

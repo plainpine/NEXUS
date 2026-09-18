@@ -27,6 +27,14 @@
             <i>⚙️</i> デフォルト設定
         </a>
 
+        {% if session.get('selected_event_name', '')|trim == '学習会' and session.get('selected_event_status', '')|trim == '実施後' %}
+        <a href="/evaluation/teacher" class="nav-item {{ 'active' if request.path == '/evaluation/teacher' }}">
+            <i>🧑‍🏫</i> 講師評価
+        </a>
+        <a href="/evaluation/student" class="nav-item {{ 'active' if request.path == '/evaluation/student' }}">
+            <i>🎓</i> 生徒評価
+        </a>
+        {% else %}
         <a href="/teachers" class="nav-item {{ 'active' if request.path == '/teachers' }}">
             <i>🧑‍🏫</i> 講師一覧
         </a>
@@ -44,6 +52,7 @@
             <i>🛠️</i> マッチング調整
         </a>
         {% endif %}
+        {% endif %}
         {% if current_user.is_super_admin %}
         <a href="/users" class="nav-item {{ 'active' if request.path == '/users' }}">
             <i>⚙️</i> 管理者一覧
@@ -58,7 +67,7 @@
             <i>👤</i> 出席確認
         </a>
         <a href="{{ url_for('post_study_session') }}" class="nav-item {{ 'active' if request.path == '/post_study_session' }}">
-            <i>🎓</i> 学習会実施
+            <i>🎓</i> 学習会実績
         </a>
         <a href="{{ url_for('student_edit', id=current_user.student_record.id) }}" class="nav-item {{ 'active' if request.path == url_for('student_edit', id=current_user.student_record.id) }}">
             <i>👤</i> プロフィール
@@ -66,9 +75,6 @@
         {% elif current_user.teacher_record %}
         <a href="{{ url_for('teacher_dashboard') }}" class="nav-item {{ 'active' if request.path == '/teacher/dashboard' }}">
             <i>👤</i> 出席確認
-        </a>
-        <a href="{{ url_for('post_study_session') }}" class="nav-item {{ 'active' if request.path == '/post_study_session' }}">
-            <i>🎓</i> 学習会実施
         </a>
         <a href="{{ url_for('teacher_edit', id=current_user.teacher_record.id) }}" class="nav-item {{ 'active' if request.path == url_for('teacher_edit', id=current_user.teacher_record.id) }}">
             <i>👤</i> プロフィール
@@ -81,6 +87,21 @@
 </aside>
 
 <main class="main-content">
+    {% if current_user %}
+    <div style="background-color: #f8f9fa; padding: 0.5rem 1rem; margin-bottom: 1rem; border-bottom: 1px solid #dee2e6; text-align: right; font-size: 1.1rem; font-weight: bold;">
+        {{ current_user.organization.name if current_user.organization else '組織なし' }}（
+        {% if current_user.name %}
+            {{ current_user.name }}
+        {% elif current_user.teacher_record %}
+            {{ current_user.teacher_record.name }}
+        {% elif current_user.student_record %}
+            {{ current_user.student_record.name }}
+        {% else %}
+            {{ current_user.username }}
+        {% endif %}
+        ）
+    </div>
+    {% endif %}
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         {% for message in messages %}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .evaluation-table {
+        width: 100%;
+        table-layout: fixed; /* 列幅を固定して見切れを防ぐ */
+        border-collapse: collapse;
+    }
+    .evaluation-table th, .evaluation-table td {
+        padding: 8px;
+        border: 1px solid #ddd;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .evaluation-table th {
+        background-color: #f2f2f2;
+    }
+</style>
+
+<div class="header">
+    <h1>講師評価</h1>
+</div>
+
+<div style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #ccc; background-color: #f9f9f9;">
+    <h3>評価基準</h3>
+    <p>
+        <strong>学習進捗度:</strong> 
+        4: とてもよくできた, 3: よくできた, 2: あまりできなかった, 1: できなかった
+    </p>
+    <p>
+        <strong>教えやすさ:</strong> 
+        4: とても教えやすい, 3: 教えやすい, 2: あまり教えやすくない, 1: 教えやすくない
+    </p>
+</div>
+
+<form method="POST">
+    <table class="evaluation-table">
+        <thead>
+            <tr>
+                <th style="width: 15%;">生徒名</th>
+                <th style="width: 15%;">前半担当講師</th>
+                <th style="width: 10%;">前半：学習進捗度</th>
+                <th style="width: 10%;">前半：教えやすさ</th>
+                <th style="width: 15%;">後半担当講師</th>
+                <th style="width: 10%;">後半：学習進捗度</th>
+                <th style="width: 10%;">後半：教えやすさ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in data %}
+            <tr>
+                <td>{{ item.student.name }}</td>
+                
+                <!-- 前半評価 -->
+                <td>
+                    <select name="teacher_{{ item.student.id }}_前半" style="width: 100%;">
+                        {% for teacher in teachers %}
+                        <option value="{{ teacher.id }}" {% if item.teachers['前半'] == teacher.id %}selected{% endif %}>{{ teacher.name }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="achievement_{{ item.student.id }}_{{ item.teachers['前半'] }}_前半" style="width: 100%;">
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if item.evals['前半'] and item.evals['前半'].achievement == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="teachability_{{ item.student.id }}_{{ item.teachers['前半'] }}_前半" style="width: 100%;">
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if item.evals['前半'] and item.evals['前半'].teachability == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+
+                <!-- 後半評価 -->
+                <td>
+                    <select name="teacher_{{ item.student.id }}_後半" style="width: 100%;">
+                        {% for teacher in teachers %}
+                        <option value="{{ teacher.id }}" {% if item.teachers['後半'] == teacher.id %}selected{% endif %}>{{ teacher.name }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="achievement_{{ item.student.id }}_{{ item.teachers['後半'] }}_後半" style="width: 100%;">
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if item.evals['後半'] and item.evals['後半'].achievement == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="teachability_{{ item.student.id }}_{{ item.teachers['後半'] }}_後半" style="width: 100%;">
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if item.evals['後半'] and item.evals['後半'].teachability == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">保存</button>
+</form>
+{% endblock %}

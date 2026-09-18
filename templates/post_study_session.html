@@ -1,66 +1,100 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    .evaluation-table {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+    }
+    .evaluation-table th, .evaluation-table td {
+        padding: 8px;
+        border: 1px solid #ddd;
+        text-align: center;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+    .evaluation-table th {
+        background-color: #f2f2f2;
+    }
+</style>
+
 <div class="header">
-    <h1>学習会実施状況</h1>
+    <h1>学習会での状況</h1>
 </div>
 
 <div class="card">
     <div class="table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>登録</th>
-                    <th>日程</th>
-                    <th>会場</th>
-                    <th>前半</th>
-                    <th>後半</th>
-                    <th>学習の達成度</th>
-                    <th>{{ '生徒との相性' if is_teacher else '講師との相性' }}</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for event in events %}
-                {% set attendance = attendance_map.get(event.id) %}
-                <tr>
-                    <form action="{{ url_for('post_study_session_save') }}" method="post">
+        <form action="{{ url_for('post_study_session_save') }}" method="post">
+            <table class="evaluation-table">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;">登録</th>
+                        <th style="width: 10%;">日程</th>
+                        <th style="width: 8%;">前半科目</th>
+                        <th style="width: 13%;">前半：学習進捗度</th>
+                        <th style="width: 13%;">前半：学習しやすさ</th>
+                        <th style="width: 8%;">後半科目</th>
+                        <th style="width: 13%;">後半：学習進捗度</th>
+                        <th style="width: 13%;">後半：学習しやすさ</th>
+                        <th style="width: 7%;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for event in events %}
+                    {% set attendance = attendance_map.get(event.id) %}
+                    <tr>
                         <input type="hidden" name="event_id" value="{{event.id}}">
                         <td>
-                            {% if attendance and attendance.achievement and attendance.compatibility %}
+                            {% if attendance and attendance.updated_by %}
                                 {% if attendance.updated_by == 'user' %}★
                                 {% elif attendance.updated_by == 'admin' %}☆
                                 {% endif %}
                             {% endif %}
                         </td>
                         <td>{{ event.date.strftime('%Y-%m-%d') }}</td>
-                        <td>{{ attendance.venue.name if attendance and attendance.venue else '未定' }}</td>
                         <td>{{ attendance.subject1 if attendance else '-' }}</td>
-                        <td>{{ attendance.subject2 if attendance else '-' }}</td>
                         <td>
-                            <select name="achievement">
-                                <option value="4" {{ 'selected' if attendance and attendance.achievement == 4 }}>とてもよくできた</option>
-                                <option value="3" {{ 'selected' if attendance and attendance.achievement == 3 }}>できた</option>
-                                <option value="2" {{ 'selected' if attendance and attendance.achievement == 2 }}>あまりできなかった</option>
-                                <option value="1" {{ 'selected' if attendance and attendance.achievement == 1 }}>できなかった</option>
+                            <select name="achievement_前半">
+                                <option value="4">とてもよくできた</option>
+                                <option value="3">よくできた</option>
+                                <option value="2">あまりできなかった</option>
+                                <option value="1">できなかった</option>
                             </select>
                         </td>
                         <td>
-                            <select name="compatibility">
-                                <option value="4" {{ 'selected' if attendance and attendance.compatibility == 4 }}>とても良かった</option>
-                                <option value="3" {{ 'selected' if attendance and attendance.compatibility == 3 }}>良かった</option>
-                                <option value="2" {{ 'selected' if attendance and attendance.compatibility == 2 }}>あまり良くなかった</option>
-                                <option value="1" {{ 'selected' if attendance and attendance.compatibility == 1 }}>良くなかった</option>
+                            <select name="learnability_前半">
+                                <option value="4">とてもしやすい</option>
+                                <option value="3">しやすい</option>
+                                <option value="2">あまりしやすくない</option>
+                                <option value="1">しにくい</option>
+                            </select>
+                        </td>
+                        <td>{{ attendance.subject2 if attendance else '-' }}</td>
+                        <td>
+                            <select name="achievement_後半">
+                                <option value="4">とてもよくできた</option>
+                                <option value="3">よくできた</option>
+                                <option value="2">あまりできなかった</option>
+                                <option value="1">できなかった</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select name="learnability_後半">
+                                <option value="4">とてもしやすい</option>
+                                <option value="3">しやすい</option>
+                                <option value="2">あまりしやすくない</option>
+                                <option value="1">しにくい</option>
                             </select>
                         </td>
                         <td>
                             <button type="submit" class="btn btn-primary">保存</button>
                         </td>
-                    </form>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </form>
     </div>
 </div>
 {% endblock %}

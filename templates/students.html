@@ -57,10 +57,6 @@
                     <th>前半科目</th>
                     <th>後半科目</th>
                     {% endif %}
-                    {% if event_info and event_info.status == '実施後' %}
-                    <th>学習の達成度</th>
-                    <th>講師との相性</th>
-                    {% endif %}
                     {% endif %}
                     <th style="text-align: right;">操作</th>
                 </tr>
@@ -119,24 +115,6 @@
                             {% for sub in ['数学', '英語', '国語', '理科', '社会'] %}
                             <option value="{{sub}}" {{ 'selected' if (s.attendance.subject2 if s.attendance else 'なし') == sub }}>{{sub}}</option>
                             {% endfor %}
-                        </select>
-                    </td>
-                    {% endif %}
-                    {% if event_info and event_info.status == '実施後' %}
-                    <td>
-                        <select name="achievement_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
-                            <option value="4" {{ 'selected' if (s.attendance.achievement if s.attendance else 0) == 4 }}>とてもよくできた</option>
-                            <option value="3" {{ 'selected' if (s.attendance.achievement if s.attendance else 0) == 3 }}>できた</option>
-                            <option value="2" {{ 'selected' if (s.attendance.achievement if s.attendance else 0) == 2 }}>あまりできなかった</option>
-                            <option value="1" {{ 'selected' if (s.attendance.achievement if s.attendance else 0) == 1 }}>できなかった</option>
-                        </select>
-                    </td>
-                    <td>
-                        <select name="compatibility_{{s.id}}" style="font-size: 0.8rem; padding: 0.2rem;">
-                            <option value="4" {{ 'selected' if (s.attendance.compatibility if s.attendance else 0) == 4 }}>とても良かった</option>
-                            <option value="3" {{ 'selected' if (s.attendance.compatibility if s.attendance else 0) == 3 }}>良かった</option>
-                            <option value="2" {{ 'selected' if (s.attendance.compatibility if s.attendance else 0) == 2 }}>あまり良くなかった</option>
-                            <option value="1" {{ 'selected' if (s.attendance.compatibility if s.attendance else 0) == 1 }}>良くなかった</option>
                         </select>
                     </td>
                     {% endif %}
