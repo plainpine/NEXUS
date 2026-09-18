@@ -3,8 +3,13 @@ import json
 from functools import wraps
 from datetime import datetime
 from sqlalchemy import inspect, text
-from models import db, Teacher, Student, MatchResult, User, Event, Config, EventAttendance, Organization, Venue
+from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue
 from matching import simulated_annealing
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import os
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -1121,6 +1126,119 @@ def matching_config():
     
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
     return render_template('matching_config.html', configs=configs)
+
+@app.route('/matching/adjustment', methods=['GET'])
+@login_required
+@admin_required
+def matching_adjustment():
+    event_id = session.get('selected_event_id')
+    if not event_id:
+        return redirect(url_for('event_select'))
+    
+    # 1. 固定表示用: 自動マッチング結果
+    fixed_matches = MatchResult.query.filter_by(event_id=event_id).all()
+    
+    # 2. 調整用: 調整結果 (なければ自動マッチング結果を使用)
+    adj_matches = AdjustedMatch.query.filter_by(event_id=event_id).all()
+    if not adj_matches:
+        adj_matches = fixed_matches
+
+    # 講師IDのセット (どちらかの結果に含まれる講師)
+    teacher_ids = set([m.teacher_id for m in fixed_matches] + [m.teacher_id for m in adj_matches])
+    teachers = Teacher.query.filter(Teacher.id.in_(teacher_ids)).order_by(Teacher.name).all()
+    
+    # データ構造の構築
+    adj_map = {}
+    for t in teachers:
+        adj_map[t.id] = {
+            'teacher': t,
+            'fixed_students': [Student.query.get(m.student_id) for m in fixed_matches if m.teacher_id == t.id],
+            'adj_students': [Student.query.get(m.student_id) for m in adj_matches if m.teacher_id == t.id]
+        }
+        
+    return render_template('matching_adjustment.html', adj_map=adj_map, event_id=event_id)
+
+@app.route('/matching/save_adjustment', methods=['POST'])
+@login_required
+@admin_required
+def save_adjustment():
+    payload = request.json
+    event_id = payload.get('event_id')
+    data = payload.get('data')
+    
+    AdjustedMatch.query.filter_by(event_id=event_id).delete()
+    
+    for t_id, s_ids in data.items():
+        for s_id in s_ids:
+            t = Teacher.query.get(t_id)
+            s = Student.query.get(s_id)
+            adj = AdjustedMatch(
+                event_id=event_id,
+                venue_id=t.default_venue_id or 1,
+                teacher_id=t.id,
+                student_id=s.id,
+                teacher=t.name,
+                student=s.name
+            )
+            db.session.add(adj)
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+
+from flask import send_file
+# ... (他のインポート)
+
+import pandas as pd
+from io import BytesIO
+
+# ... (既存のコード) ...
+
+# PDF関連 import の削除を確認してください。
+
+@app.route('/matching/export_excel', methods=['GET'])
+@login_required
+@admin_required
+def export_adjustment_excel():
+    event_id = session.get('selected_event_id')
+    if not event_id:
+        return redirect(url_for('event_select'))
+    
+    event = Event.query.get(event_id)
+    filename = f"{event.date.strftime('%Y%m%d')}_組合せ.xlsx"
+    
+    # 調整結果または自動マッチング結果を取得
+    matches = AdjustedMatch.query.filter_by(event_id=event_id).all()
+    if not matches:
+        matches = MatchResult.query.filter_by(event_id=event_id).all()
+    
+    # 講師ごとに生徒をグループ化
+    # 講師名順でソートするために、まず全講師の情報を取得して並べる
+    teacher_map = {m.teacher_id: m.teacher for m in matches}
+    
+    # 講師IDを講師名順にソート
+    sorted_teacher_ids = sorted(teacher_map.keys(), key=lambda tid: teacher_map[tid])
+    
+    adj_map = {}
+    for t_id in sorted_teacher_ids:
+        adj_map[t_id] = {'name': teacher_map[t_id], 'students': []}
+        
+    for m in matches:
+        adj_map[m.teacher_id]['students'].append(m.student)
+    
+    data = []
+    for t_id in sorted_teacher_ids:
+        data.append({'講師': adj_map[t_id]['name'], '生徒': ", ".join(adj_map[t_id]['students'])})
+    
+    # Excel生成 (メモリ上)
+    df = pd.DataFrame(data)
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='組合せ')
+        
+    buffer.seek(0)
+    return send_file(buffer, download_name=filename, as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 
 # マッチング
 @app.route('/matching', methods=['GET', 'POST'])

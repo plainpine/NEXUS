@@ -40,6 +40,9 @@
         <a href="/result" class="nav-item {{ 'active' if request.path == '/result' }}">
             <i>📊</i> マッチング結果
         </a>
+        <a href="/matching/adjustment" class="nav-item {{ 'active' if request.path == '/matching/adjustment' }}">
+            <i>🛠️</i> マッチング調整
+        </a>
         {% endif %}
         {% if current_user.is_super_admin %}
         <a href="/users" class="nav-item {{ 'active' if request.path == '/users' }}">

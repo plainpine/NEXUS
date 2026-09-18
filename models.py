@@ -156,3 +156,12 @@ class MatchResult(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=True)
     teacher = db.Column(db.String(50))
     student = db.Column(db.String(50))
+
+class AdjustedMatch(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=False)
+    venue_id = db.Column(db.Integer, db.ForeignKey('venue.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    teacher = db.Column(db.String(50))
+    student = db.Column(db.String(50))
