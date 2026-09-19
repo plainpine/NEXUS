@@ -1326,7 +1326,8 @@ def matching():
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
     # 禁止設定の取得
     prohibited = {(pm.student_id, pm.teacher_id) for pm in ProhibitedMatch.query.filter_by(organization_id=org_id).all()}
-        
+    print(f"DEBUG: Loaded prohibited matches: {prohibited}")
+
     attendances = EventAttendance.query.filter_by(event_id=event_id, attend=True).all()
     if has_venues and venue_id:
         attendances = [a for a in attendances if a.venue_id == int(venue_id)]

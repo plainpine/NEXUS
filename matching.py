@@ -43,13 +43,11 @@ def sub_name_to_attr(sub_name):
     mapping = {"数学": "math", "英語": "english", "国語": "japanese", "理科": "science", "社会": "social"}
     return mapping.get(sub_name)
 
-def score(teacher, student, config=None, prohibited_matches=None):
-    config = config or DEFAULT_CONFIG
-    
-    # 0. 禁止マッチングチェック
-    if prohibited_matches and (student.id, teacher.id) in prohibited_matches:
-        return -1000000 # 十分大きな負の値
+# 禁止マッチング用コスト
+PROHIBITED_PENALTY = 1000000
 
+def score(teacher, student, config=None):
+    config = config or DEFAULT_CONFIG
     total = 0
     
     # 1. 科目のマッチング
@@ -124,13 +122,18 @@ def simulated_annealing(teachers, students, config=None, prohibited_matches=None
     def get_idx(s_idx, t_idx):
         return s_idx * num_t + t_idx
 
-    # 1. 目的関数: スコアの最大化 -> -スコアの最小化
+    # 1. 目的関数: スコアの最大化 -> -スコアの最小化 (禁止マッチングはコストとして加算)
     for i in range(num_s):
         for j in range(num_t):
             idx = get_idx(i, j)
-            s_val = score(teachers[j], students[i], config, prohibited_matches)
-            # 目的関数にマイナスをつける（最小化問題にするため）
-            qubo[(idx, idx)] = qubo.get((idx, idx), 0) - s_val
+            if prohibited_matches and (students[i].id, teachers[j].id) in prohibited_matches:
+                # 禁止マッチングは大きなコスト
+                qubo[(idx, idx)] = qubo.get((idx, idx), 0) + PROHIBITED_PENALTY
+            else:
+                # スコアをマイナスする（最小化のため）
+                s_val = score(teachers[j], students[i], config)
+                qubo[(idx, idx)] = qubo.get((idx, idx), 0) - s_val
+
 
     # 2. 制約1: 各生徒 i は必ず1人の講師を選択する
     for i in range(num_s):
@@ -166,22 +169,44 @@ def simulated_annealing(teachers, students, config=None, prohibited_matches=None
     # 生徒ごとにスコア計算をしておく
     student_teacher_scores = []
     for i in range(num_s):
-        scores = [score(teachers[j], students[i], config, prohibited_matches) for j in range(num_t)]
+        scores = [score(teachers[j], students[i], config) for j in range(num_t)]
         student_teacher_scores.append(scores)
         
     assigned_teachers = [None] * num_s
     teacher_load = [0] * num_t
+
+    # QUBOの解を初期割当てとして採用する。サンプルが制約を完全に
+    # 満たさない場合は、容量に収まる選択だけを残して後段で補修する。
+    for student_idx in range(num_s):
+        sampled_teachers = [
+            teacher_idx
+            for teacher_idx in range(num_t)
+            if sample.get(get_idx(student_idx, teacher_idx), 0) == 1
+            and (prohibited_matches is None or
+                 (students[student_idx].id, teachers[teacher_idx].id) not in prohibited_matches)
+            and teacher_load[teacher_idx] < target_counts[teacher_idx]
+        ]
+        if sampled_teachers:
+            selected_teacher = max(
+                sampled_teachers,
+                key=lambda teacher_idx: student_teacher_scores[student_idx][teacher_idx],
+            )
+            assigned_teachers[student_idx] = selected_teacher
+            teacher_load[selected_teacher] += 1
     
     # まず各講師の下限人数を確保する。
     # これを後回しにすると、スコアの高い講師に生徒が集中して下限を満たせない。
     for teacher_idx in range(num_t):
         while teacher_load[teacher_idx] < min_teacher_load:
+            # 禁止マッチングを考慮して選択候補を絞る
             available_students = [
                 i for i in range(num_s)
-                if assigned_teachers[i] is None
+                if assigned_teachers[i] is None and (prohibited_matches is None or (students[i].id, teachers[teacher_idx].id) not in prohibited_matches)
             ]
             if not available_students:
-                raise RuntimeError("講師の担当人数下限を満たせません")
+                # 詰んだ場合、スコアが極端に低い（禁止マッチング）以外を許容するか、あるいはエラーにする
+                # ここではエラーとして上げる
+                raise RuntimeError(f"講師{teachers[teacher_idx].name}の担当人数下限を、禁止設定を守って満たせません")
             student_idx = max(
                 available_students,
                 key=lambda i: student_teacher_scores[i][teacher_idx],
@@ -194,32 +219,46 @@ def simulated_annealing(teachers, students, config=None, prohibited_matches=None
         if assigned_teachers[i] is not None:
             continue
 
-        potential_assignments = [
+        # QUBOで推奨された講師を優先し、解が不完全な場合だけ全候補へ広げる。
+        sampled_assignments = [
             j for j in range(num_t)
-            if sample.get(get_idx(i, j), 0) == 1
+            if teacher_load[j] < target_counts[j] and (prohibited_matches is None or (students[i].id, teachers[j].id) not in prohibited_matches)
+            and sample.get(get_idx(i, j), 0) == 1
         ]
-        available_assignments = [
-            j for j in potential_assignments
+        potential_assignments = sampled_assignments or [
+            j for j in range(num_t)
             if teacher_load[j] < target_counts[j]
+            and (prohibited_matches is None or (students[i].id, teachers[j].id) not in prohibited_matches)
         ]
-        if available_assignments:
-            best_t_idx = max(available_assignments, key=lambda j: student_teacher_scores[i][j])
+
+        if potential_assignments:
+            # その中からスコアが最大になる講師を選ぶ
+            best_t_idx = max(potential_assignments, key=lambda j: student_teacher_scores[i][j])
             assigned_teachers[i] = best_t_idx
             teacher_load[best_t_idx] += 1
             
     # 未割り当ての生徒は、目標人数に達していない講師のうちスコア最高へ割り当てる。
     for i in range(num_s):
         if assigned_teachers[i] is None:
+            # 1. まず、目標人数以内で、禁止ペアではない講師を探す
             available_teachers = [
                 j for j in range(num_t)
-                if teacher_load[j] < target_counts[j]
+                if teacher_load[j] < target_counts[j] and (prohibited_matches is None or (students[i].id, teachers[j].id) not in prohibited_matches)
             ]
+
+            # 2. それで見つからない場合は、目標人数を無視して、禁止ペアではない講師を探す
             if not available_teachers:
-                raise RuntimeError("講師ごとの目標担当人数内に全生徒を割り当てられません")
-            best_t_idx = max(
-                available_teachers,
-                key=lambda j: student_teacher_scores[i][j],
-            )
+                available_teachers = [
+                    j for j in range(num_t)
+                    if (prohibited_matches is None or (students[i].id, teachers[j].id) not in prohibited_matches)
+                ]
+
+            # 3. それでも見つからない場合は、禁止ペアであることを許容せざるを得ないが、ログを出す
+            if not available_teachers:
+                print(f"DEBUG: WARNING: Cannot assign student {students[i].name} without violating prohibition.")
+                available_teachers = list(range(num_t))
+
+            best_t_idx = max(available_teachers, key=lambda j: student_teacher_scores[i][j])
             assigned_teachers[i] = best_t_idx
             teacher_load[best_t_idx] += 1
             
