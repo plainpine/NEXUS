@@ -7,15 +7,32 @@
 
 <div class="card">
     <form action="/matching/setup" method="post">
-        <label>学習会を選択: </label>
-        <select name="event_id" onchange="this.form.submit()">
-            <option value="">-- 選択してください --</option>
-            {% for event in events %}
-            <option value="{{event.id}}" {{ 'selected' if selected_event and selected_event.id == event.id }}>
-                {{ event.date.strftime('%Y-%m-%d') }} - {{ event.name }}
-            </option>
-            {% endfor %}
-        </select>
+        <div style="margin-bottom: 1rem;">
+            <label>学習会を選択: </label>
+            <select name="event_id" onchange="this.form.submit()">
+                <option value="">-- 選択してください --</option>
+                {% for event in events %}
+                <option value="{{event.id}}" {{ 'selected' if selected_event and selected_event.id == event.id }}>
+                    {{ event.date.strftime('%Y-%m-%d') }} - {{ event.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        {% if selected_event and venues %}
+        <div style="margin-bottom: 1rem;">
+            <label>会場を選択: </label>
+            <select name="venue_id" onchange="this.form.submit()">
+                {# イベントに関連付けられた会場があればそれらを、なければ組織全体の会場を表示 #}
+                {% set venues_to_show = selected_event.venues if selected_event.venues else venues %}
+                {% for venue in venues_to_show %}
+                <option value="{{venue.id}}" {{ 'selected' if selected_venue_id and selected_venue_id == venue.id }}>
+                    {{ venue.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
     </form>
     <div style="margin-top: 1rem;">
         <a href="{{ url_for('matching_config') }}" class="btn btn-outline">マッチング重み設定を変更する</a>

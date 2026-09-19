@@ -21,7 +21,7 @@
 </style>
 
 <div class="header">
-    <h1>マッチング結果</h1>
+    <h1>マッチング結果 {% if venue_name %}（会場: {{ venue_name }}）{% endif %}</h1>
     <div style="display: flex; gap: 0.5rem;">
         <div class="btn-group" style="display: flex; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border); padding: 0.2rem;">
             <a href="/result?sort=teacher" class="btn" style="padding: 0.4rem 1rem; font-size: 0.8rem; background: {{ 'var(--primary)' if sort_by == 'teacher' else 'transparent' }}; color: {{ '#fff' if sort_by == 'teacher' else 'var(--text)' }}; border: none;">講師順</a>

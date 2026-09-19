@@ -26,13 +26,16 @@
         <a href="/settings" class="nav-item {{ 'active' if request.path == '/settings' }}">
             <i>⚙️</i> デフォルト設定
         </a>
+        <a href="/prohibited_matches" class="nav-item {{ 'active' if request.path == '/prohibited_matches' }}">
+            <i>🚫</i> マッチング禁止
+        </a>
 
         {% if session.get('selected_event_name', '')|trim == '学習会' and session.get('selected_event_status', '')|trim == '実施後' %}
         <a href="/evaluation/teacher" class="nav-item {{ 'active' if request.path == '/evaluation/teacher' }}">
-            <i>🧑‍🏫</i> 講師評価
+            <i>🧑‍🏫</i> 講師による評価
         </a>
         <a href="/evaluation/student" class="nav-item {{ 'active' if request.path == '/evaluation/student' }}">
-            <i>🎓</i> 生徒評価
+            <i>🎓</i> 生徒の感想
         </a>
         {% else %}
         <a href="/teachers" class="nav-item {{ 'active' if request.path == '/teachers' }}">
@@ -67,7 +70,7 @@
             <i>👤</i> 出席確認
         </a>
         <a href="{{ url_for('post_study_session') }}" class="nav-item {{ 'active' if request.path == '/post_study_session' }}">
-            <i>🎓</i> 学習会実績
+            <i>🎓</i> 学習会の感想
         </a>
         <a href="{{ url_for('student_edit', id=current_user.student_record.id) }}" class="nav-item {{ 'active' if request.path == url_for('student_edit', id=current_user.student_record.id) }}">
             <i>👤</i> プロフィール

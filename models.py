@@ -184,3 +184,9 @@ class StudentEvaluation(db.Model):
     achievement = db.Column(db.Integer)  # 1-4
     learnability = db.Column(db.Integer) # 1-4 (学習しやすさ)
     registered_by = db.Column(db.String(20)) # 'student', 'admin' (未登録はNone)
+
+class ProhibitedMatch(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)

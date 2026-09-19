@@ -3,7 +3,7 @@ import json
 from functools import wraps
 from datetime import datetime
 from sqlalchemy import inspect, text
-from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation
+from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation, ProhibitedMatch
 from matching import simulated_annealing
 import os
 
@@ -27,6 +27,10 @@ with app.app_context():
                 db.session.execute(text(alter_statement))
         if any(column_name not in columns for column_name in missing_columns):
             db.session.commit()
+            
+    if 'prohibited_match' not in inspector.get_table_names():
+        db.session.execute(text('CREATE TABLE prohibited_match (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER, student_id INTEGER, teacher_id INTEGER, FOREIGN KEY(organization_id) REFERENCES organization(id), FOREIGN KEY(student_id) REFERENCES student(id), FOREIGN KEY(teacher_id) REFERENCES teacher(id))'))
+        db.session.commit()
 
 # ログインチェックデコレータ
 def login_required(f):
@@ -685,7 +689,8 @@ def students():
     event_id = session.get('selected_event_id')
     event_info = None
     all_teachers = Teacher.query.filter_by(organization_id=org_id).all()
-    all_students = Student.query.filter_by(organization_id=org_id).all()
+    # ユーザIDでソート（関連するUserモデルのusername）
+    all_students = Student.query.filter_by(organization_id=org_id).join(User).order_by(User.username).all()
     venues = Venue.query.filter_by(organization_id=org_id).all()
     saved = request.args.get('saved', False)
     
@@ -1070,36 +1075,68 @@ def event_attendance_save():
 
 
 # マッチング
-@app.route('/matching/setup', methods=['GET'])
+@app.route('/matching/setup', methods=['GET', 'POST'])
 @login_required
 @organization_required
 def matching_setup():
     org_id = session.get('organization_id')
-    events = Event.query.filter_by(organization_id=org_id, name='学習会').order_by(Event.date).all()
+    # 「学習会」かつステータスが「実施」のイベントのみ取得
+    events = Event.query.filter_by(organization_id=org_id, name='学習会', status='実施').order_by(Event.date).all()
     selected_event = None
+    selected_venue_id = None
+    
+    if request.method == 'POST':
+        event_id = request.form.get('event_id')
+        venue_id = request.form.get('venue_id')
+        print(f"DEBUG: matching_setup POST -> event_id={event_id}, venue_id={venue_id}")
+        session['selected_event_id'] = event_id # 必要に応じて更新
+        session['selected_venue_id'] = venue_id # 選択した会場を保存
+        print(f"DEBUG: session updated -> selected_event_id={session.get('selected_event_id')}, selected_venue_id={session.get('selected_venue_id')}")
+        return redirect(url_for('matching_setup'))
+
     event_id = session.get('selected_event_id')
+    selected_venue_id = session.get('selected_venue_id')
+
     if event_id:
         selected_event = Event.query.get(event_id)
     
     teachers = []
     students = []
+    venues = Venue.query.filter_by(organization_id=org_id).all()
+    
     if selected_event:
-        attendances = EventAttendance.query.filter_by(event_id=selected_event.id).all()
-        attendance_map = {a.user_id: a for a in attendances}
+        # このイベントで選択可能な会場を取得
+        # (イベントに関連付けられた会場のみに絞る)
+        available_venues = selected_event.venues
         
+        # もしvenue_idが未選択なら、最初の会場をデフォルトにする
+        if not selected_venue_id and available_venues:
+            selected_venue_id = available_venues[0].id
+            session['selected_venue_id'] = selected_venue_id
+
+        attendances = EventAttendance.query.filter_by(event_id=selected_event.id, attend=True).all()
+        
+        # 会場でフィルタリング (会場が存在し、かつselected_venue_idが指定されている場合のみ)
+        has_venues = len(venues) > 0
+        if has_venues and selected_venue_id:
+            attendances = [a for a in attendances if a.venue_id == int(selected_venue_id)]
+            
+        attendance_map = {a.user_id: a for a in attendances}
+
         all_teachers = Teacher.query.filter_by(organization_id=org_id).all()
         for t in all_teachers:
             t.attendance = attendance_map.get(t.user_id)
-            if t.attendance and t.attendance.attend:
+            if t.attendance:
                 teachers.append(t)
         
         all_students = Student.query.filter_by(organization_id=org_id).all()
         for s in all_students:
             s.attendance = attendance_map.get(s.user_id)
-            if s.attendance and s.attendance.attend:
+            if s.attendance:
                 students.append(s)
     
-    return render_template('matching_setup.html', events=events, selected_event=selected_event, teachers=teachers, students=students)
+    return render_template('matching_setup.html', events=events, selected_event=selected_event, 
+                           teachers=teachers, students=students, venues=venues, selected_venue_id=int(selected_venue_id) if selected_venue_id else None)
 
 # マッチング設定
 @app.route('/matching/config', methods=['GET', 'POST'])
@@ -1128,14 +1165,27 @@ def matching_config():
 @admin_required
 def matching_adjustment():
     event_id = session.get('selected_event_id')
+    venue_id = session.get('selected_venue_id')
+    
     if not event_id:
         return redirect(url_for('event_select'))
     
+    # 調整用会場名
+    venue_name = None
+    if venue_id:
+        venue = Venue.query.get(venue_id)
+        if venue:
+            venue_name = venue.name
+    
     # 1. 固定表示用: 自動マッチング結果
-    fixed_matches = MatchResult.query.filter_by(event_id=event_id).all()
+    fixed_matches = MatchResult.query.filter_by(event_id=event_id)
+    if venue_id:
+        fixed_matches = fixed_matches.filter_by(venue_id=venue_id)
+    fixed_matches = fixed_matches.all()
     
     # 2. 調整用: 調整結果 (なければ自動マッチング結果を使用)
     adj_matches = AdjustedMatch.query.filter_by(event_id=event_id).all()
+    
     if not adj_matches:
         adj_matches = fixed_matches
 
@@ -1152,7 +1202,7 @@ def matching_adjustment():
             'adj_students': [Student.query.get(m.student_id) for m in adj_matches if m.teacher_id == t.id]
         }
         
-    return render_template('matching_adjustment.html', adj_map=adj_map, event_id=event_id)
+    return render_template('matching_adjustment.html', adj_map=adj_map, event_id=event_id, venue_name=venue_name)
 
 @app.route('/matching/save_adjustment', methods=['POST'])
 @login_required
@@ -1161,23 +1211,41 @@ def save_adjustment():
     payload = request.json
     event_id = payload.get('event_id')
     data = payload.get('data')
+    print(f"DEBUG: save_adjustment -> event_id={event_id}, data={data}")
     
     AdjustedMatch.query.filter_by(event_id=event_id).delete()
     
     for t_id, s_ids in data.items():
+        print(f"DEBUG: Processing teacher={t_id}, students={s_ids}")
+        t = Teacher.query.get(t_id)
+        if not t:
+            print(f"DEBUG: Skipping invalid teacher={t_id}")
+            continue
+            
         for s_id in s_ids:
-            t = Teacher.query.get(t_id)
             s = Student.query.get(s_id)
+            if not s:
+                print(f"DEBUG: Skipping invalid student={s_id}")
+                continue
+                
+            # AdjustedMatch の venue_id をここで正しく設定する
+            # 会場がフィルタリングされている場合はそのID、そうでない場合は講師のデフォルト会場
+            venue_id = session.get('selected_venue_id')
+            if not venue_id:
+                venue_id = t.default_venue_id or 1
+            
             adj = AdjustedMatch(
                 event_id=event_id,
-                venue_id=t.default_venue_id or 1,
+                venue_id=venue_id,
                 teacher_id=t.id,
                 student_id=s.id,
                 teacher=t.name,
                 student=s.name
             )
             db.session.add(adj)
+            print(f"DEBUG: Added AdjustedMatch(event={event_id}, venue={venue_id}, teacher={t.name}, student={s.name})")
     db.session.commit()
+    print("DEBUG: Commit complete")
     return jsonify({"status": "success"})
 
 
@@ -1250,10 +1318,18 @@ def matching():
         return "イベントが選択されていません", 400
     
     org_id = session.get('organization_id')
+    # 会場が選択されている場合はフィルタリング (会場が存在する場合のみ)
+    has_venues = Venue.query.filter_by(organization_id=org_id).count() > 0
+    venue_id = session.get('selected_venue_id') if has_venues else None
+    
     # 設定をDBから取得
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
+    # 禁止設定の取得
+    prohibited = {(pm.student_id, pm.teacher_id) for pm in ProhibitedMatch.query.filter_by(organization_id=org_id).all()}
         
     attendances = EventAttendance.query.filter_by(event_id=event_id, attend=True).all()
+    if has_venues and venue_id:
+        attendances = [a for a in attendances if a.venue_id == int(venue_id)]
     
     # 講師・生徒の絞り込み
     teacher_user_ids = [a.user_id for a in attendances if User.query.get(a.user_id) and User.query.get(a.user_id).teacher_record]
@@ -1263,10 +1339,12 @@ def matching():
     students = Student.query.filter(Student.user_id.in_(student_user_ids)).all()
     
     # マッチングロジック (設定を渡すように変更)
-    results, energy = simulated_annealing(teachers, students, configs)
+    results, energy = simulated_annealing(teachers, students, configs, prohibited)
 
     session['last_energy'] = energy
 
+    # 既存の調整結果をクリア
+    AdjustedMatch.query.filter_by(event_id=event_id).delete()
     MatchResult.query.filter_by(event_id=event_id).delete()
 
     attendance_map = {a.user_id: a for a in attendances}
@@ -1314,18 +1392,28 @@ def matching():
 def result():
     sort_by = request.args.get('sort', 'teacher')
     event_id = request.args.get('event_id', type=int) or session.get('selected_event_id')
+    venue_id = session.get('selected_venue_id')
+    
     query = MatchResult.query
     if event_id:
         query = query.filter_by(event_id=event_id)
+        if venue_id:
+            query = query.filter_by(venue_id=venue_id)
     else:
-        # 対象イベントがない場合、過去イベントの結果を誤って表示しない。
         query = query.filter(False)
 
     if sort_by == 'student':
         results = query.order_by(MatchResult.student, MatchResult.student_id).all()
     else:
         results = query.order_by(MatchResult.teacher, MatchResult.teacher_id).all()
-    return render_template('result.html', results=results, sort_by=sort_by)
+    
+    venue_name = None
+    if venue_id:
+        venue = Venue.query.get(venue_id)
+        if venue:
+            venue_name = venue.name
+            
+    return render_template('result.html', results=results, sort_by=sort_by, venue_name=venue_name)
 
 # 学習会実施ダッシュボード
 @app.route('/post_study_session', methods=['GET'])
@@ -1535,11 +1623,41 @@ def evaluation_student():
 
     # ソート用にリスト化
     data = list(data_map.values())
-    # 生徒名順でソート
-    data.sort(key=lambda x: x['student'].name)
+    # ユーザID順でソート（関連するUserモデルのusername）
+    data.sort(key=lambda x: x['student'].user.username if x['student'].user else "")
             
     return render_template('evaluation_student.html', data=data, 
                            achievement_map=achievement_map, learnability_map=learnability_map)
+
+# マッチング禁止
+@app.route('/prohibited_matches', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def prohibited_matches():
+    org_id = session['organization_id']
+    if request.method == 'POST':
+        # 既存の禁止設定を削除
+        ProhibitedMatch.query.filter_by(organization_id=org_id).delete()
+        
+        # チェックされた組合せを保存
+        for key in request.form.keys():
+            if key.startswith('prohibit_'):
+                # prohibit_studentId_teacherId
+                _, student_id, teacher_id = key.split('_')
+                pm = ProhibitedMatch(organization_id=org_id, student_id=int(student_id), teacher_id=int(teacher_id))
+                db.session.add(pm)
+        db.session.commit()
+        flash('マッチング禁止設定を保存しました')
+        return redirect(url_for('prohibited_matches'))
+    
+    # 講師と生徒の一覧を取得
+    teachers = Teacher.query.filter_by(organization_id=org_id).all()
+    students = Student.query.filter_by(organization_id=org_id).all()
+    
+    # 禁止設定の取得
+    prohibited = {(pm.student_id, pm.teacher_id) for pm in ProhibitedMatch.query.filter_by(organization_id=org_id).all()}
+    
+    return render_template('prohibited_matches.html', teachers=teachers, students=students, prohibited=prohibited)
 
 if __name__ == '__main__':
     app.run(debug=True)

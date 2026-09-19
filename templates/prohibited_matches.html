@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .prohibited-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        border-bottom: 1px solid #ddd;
+    }
+    .prohibited-table th, .prohibited-table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: center;
+    }
+    /* 生徒名（行ヘッダー）の列幅を広げる */
+    .th-corner {
+        width: 150px;
+        background-color: #f8f9fa;
+        font-weight: bold;
+        text-align: left;
+    }
+    
+    /* 1列ごとに背景色を交互に変える（生徒名列を除外） */
+    /* tdとthのインデックスで制御 */
+    .prohibited-table tbody tr td:nth-child(even),
+    .prohibited-table thead tr th:nth-child(even) {
+        background-color: #f0f7ff;
+    }
+    
+    /* 講師名（縦・列ヘッダー） */
+    .th-teacher {
+        writing-mode: vertical-rl;
+        text-orientation: upright;
+        height: 150px;
+        vertical-align: bottom;
+        background-color: inherit; /* 親要素の色を継承 */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+
+<div class="header">
+    <h1>マッチング禁止設定</h1>
+</div>
+
+<div class="card">
+    <form action="/prohibited_matches" method="post">
+        <table class="prohibited-table">
+            <thead>
+                <tr>
+                    <th class="th-corner">生徒 \ 講師</th>
+                    {% for t in teachers %}
+                    <th class="th-teacher">{{ t.name }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in students %}
+                <tr>
+                    <th class="th-corner" style="text-align: left;">{{ s.name }}</th>
+                    {% for t in teachers %}
+                    <td>
+                        <input type="checkbox" name="prohibit_{{s.id}}_{{t.id}}" value="1" {% if (s.id, t.id) in prohibited %}checked{% endif %}>
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top: 1rem;">
+            <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

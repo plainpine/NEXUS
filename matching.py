@@ -43,8 +43,13 @@ def sub_name_to_attr(sub_name):
     mapping = {"数学": "math", "英語": "english", "国語": "japanese", "理科": "science", "社会": "social"}
     return mapping.get(sub_name)
 
-def score(teacher, student, config=None):
+def score(teacher, student, config=None, prohibited_matches=None):
     config = config or DEFAULT_CONFIG
+    
+    # 0. 禁止マッチングチェック
+    if prohibited_matches and (student.id, teacher.id) in prohibited_matches:
+        return -1000000 # 十分大きな負の値
+
     total = 0
     
     # 1. 科目のマッチング
@@ -95,7 +100,7 @@ def score(teacher, student, config=None):
 
     return total
 
-def simulated_annealing(teachers, students, config=None):
+def simulated_annealing(teachers, students, config=None, prohibited_matches=None):
     config = config or DEFAULT_CONFIG
     # 1. 堅牢性の向上：空入力時の処理
     if not teachers or not students:
@@ -123,7 +128,7 @@ def simulated_annealing(teachers, students, config=None):
     for i in range(num_s):
         for j in range(num_t):
             idx = get_idx(i, j)
-            s_val = score(teachers[j], students[i], config)
+            s_val = score(teachers[j], students[i], config, prohibited_matches)
             # 目的関数にマイナスをつける（最小化問題にするため）
             qubo[(idx, idx)] = qubo.get((idx, idx), 0) - s_val
 
@@ -161,7 +166,7 @@ def simulated_annealing(teachers, students, config=None):
     # 生徒ごとにスコア計算をしておく
     student_teacher_scores = []
     for i in range(num_s):
-        scores = [score(teachers[j], students[i], config) for j in range(num_t)]
+        scores = [score(teachers[j], students[i], config, prohibited_matches) for j in range(num_t)]
         student_teacher_scores.append(scores)
         
     assigned_teachers = [None] * num_s
