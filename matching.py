@@ -43,12 +43,18 @@ def sub_name_to_attr(sub_name):
     mapping = {"数学": "math", "英語": "english", "国語": "japanese", "理科": "science", "社会": "social"}
     return mapping.get(sub_name)
 
+def evaluation_rating_to_score(rating):
+    """評価1〜4を、悪い評価が負になるスコアへ変換する。"""
+    if rating not in [1, 2, 3, 4]:
+        return 0.0
+    return float(rating) - 2.5
+
 # 禁止マッチング用コスト
 PROHIBITED_PENALTY = 1000000
 
-def score(teacher, student, config=None):
+def score(teacher, student, config=None, historical_score=0):
     config = config or DEFAULT_CONFIG
-    total = 0
+    total = historical_score
     
     # 1. 科目のマッチング
     s1_prof = get_subject_proficiency(teacher, student.subject1)
@@ -98,7 +104,7 @@ def score(teacher, student, config=None):
 
     return total
 
-def simulated_annealing(teachers, students, config=None, prohibited_matches=None):
+def simulated_annealing(teachers, students, config=None, prohibited_matches=None, evaluation_map=None):
     config = config or DEFAULT_CONFIG
     # 1. 堅牢性の向上：空入力時の処理
     if not teachers or not students:
@@ -131,7 +137,12 @@ def simulated_annealing(teachers, students, config=None, prohibited_matches=None
                 qubo[(idx, idx)] = qubo.get((idx, idx), 0) + PROHIBITED_PENALTY
             else:
                 # スコアをマイナスする（最小化のため）
-                s_val = score(teachers[j], students[i], config)
+                # ここでevaluation_mapから歴史的評価スコアを取得
+                hist_score = 0
+                if evaluation_map:
+                    hist_score = evaluation_map.get((students[i].id, teachers[j].id), 0)
+                
+                s_val = score(teachers[j], students[i], config, historical_score=hist_score)
                 qubo[(idx, idx)] = qubo.get((idx, idx), 0) - s_val
 
 
@@ -169,7 +180,15 @@ def simulated_annealing(teachers, students, config=None, prohibited_matches=None
     # 生徒ごとにスコア計算をしておく
     student_teacher_scores = []
     for i in range(num_s):
-        scores = [score(teachers[j], students[i], config) for j in range(num_t)]
+        scores = [
+            score(
+                teachers[j],
+                students[i],
+                config,
+                historical_score=(evaluation_map or {}).get((students[i].id, teachers[j].id), 0),
+            )
+            for j in range(num_t)
+        ]
         student_teacher_scores.append(scores)
         
     assigned_teachers = [None] * num_s

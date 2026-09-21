@@ -4,7 +4,7 @@ from functools import wraps
 from datetime import datetime
 from sqlalchemy import inspect, text
 from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation, ProhibitedMatch
-from matching import simulated_annealing
+from matching import simulated_annealing, evaluation_rating_to_score
 import os
 
 app = Flask(__name__)
@@ -1377,6 +1377,10 @@ def matching():
     prohibited = {(pm.student_id, pm.teacher_id) for pm in ProhibitedMatch.query.filter_by(organization_id=org_id).all()}
     print(f"DEBUG: Loaded prohibited matches: {prohibited}")
 
+    target_event = Event.query.get(int(event_id))
+    if not target_event:
+        return "イベントが見つかりません", 404
+
     attendances = EventAttendance.query.filter_by(event_id=event_id, attend=True).all()
     if has_venues and venue_id:
         attendances = [a for a in attendances if a.venue_id == int(venue_id)]
@@ -1388,8 +1392,63 @@ def matching():
     teachers = Teacher.query.filter(Teacher.user_id.in_(teacher_user_ids)).all()
     students = Student.query.filter(Student.user_id.in_(student_user_ids)).all()
     
+    # --- 歴史的評価データの統合 ---
+    evaluation_map = {}
+    
+    # 設定値の取得 (デフォルト値を設定)
+    historical_weight = float(configs.get('historical_weight', 1.0))
+    recency_bias = float(configs.get('recency_bias', 0.1)) # 1イベントごとに bias ずつ重みが増える
+    
+    # 評価データの集計関数
+    def add_eval_to_map(eval_list, achievement_attr, quality_attr):
+        for e in eval_list:
+            event = Event.query.get(e.event_id)
+            if not event: continue
+            
+            # 日付ベースの重み付け (直近ほど大きく)
+            days_ago = (datetime.now() - event.date).days
+            weight = 1.0 + (recency_bias * max(0, 100 - days_ago // 7))
+
+            score = evaluation_rating_to_score(getattr(e, achievement_attr))
+            score += evaluation_rating_to_score(getattr(e, quality_attr))
+            pair = (e.student_id, e.teacher_id)
+            
+            # 加重平均のために、(合計スコア, 合計重み)を保持
+            current_sum, current_weight_sum = evaluation_map.get(pair, (0, 0))
+            evaluation_map[pair] = (current_sum + score * weight, current_weight_sum + weight)
+    
+    # 対象組織の完了済み学習会だけを、過去評価として集計する。
+    completed_statuses = ['実施後', '完了']
+    completed_events = Event.query.filter(
+        Event.organization_id == org_id,
+        Event.status.in_(completed_statuses),
+        Event.date < target_event.date,
+    ).with_entities(Event.id).subquery()
+
+    # TeacherEvaluation (講師による生徒評価)
+    teacher_evaluations = TeacherEvaluation.query.filter(
+        TeacherEvaluation.event_id.in_(completed_events)
+    ).all()
+    add_eval_to_map(teacher_evaluations, 'achievement', 'teachability')
+    # StudentEvaluation (生徒による講師評価)
+    student_evaluations = StudentEvaluation.query.filter(
+        StudentEvaluation.event_id.in_(completed_events)
+    ).all()
+    add_eval_to_map(student_evaluations, 'achievement', 'learnability')
+    
+    # 最終的なスコアへの変換 (加重平均)
+    final_evaluation_map = {}
+    for pair, (sum_score, sum_weight) in evaluation_map.items():
+        final_evaluation_map[pair] = (sum_score / sum_weight) * historical_weight
+        
+    # ---------------------------
+
     # マッチングロジック (設定を渡すように変更)
-    results, energy = simulated_annealing(teachers, students, configs, prohibited)
+    results, energy = simulated_annealing(teachers, students, configs, prohibited, evaluation_map=final_evaluation_map)
+
+
+    session['last_energy'] = energy
+    # ... (rest of function unchanged)
 
     session['last_energy'] = energy
 

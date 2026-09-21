@@ -46,9 +46,21 @@
 
         <h3>アルゴリズム設定</h3>
         <div class="form-group">
-            <label for="num_reads">サンプリング回数 (デフォルト: 20)</label>
-            <input type="number" name="num_reads" id="num_reads" value="{{ configs.get('num_reads', 20) }}" required>
+            <label for="num_reads">サンプリング回数 (デフォルト: 100)</label>
+            <input type="number" name="num_reads" id="num_reads" value="{{ configs.get('num_reads', 100) }}" required>
             <small>アニーリングマシンによる探索回数です。大きくするほど良い結果が得られやすくなりますが、計算時間が増加します。</small>
+        </div>
+
+        <h3>歴史的評価設定</h3>
+        <div class="form-group">
+            <label for="historical_weight">歴史的評価の重み (デフォルト: 1.0)</label>
+            <input type="number" step="0.1" name="historical_weight" id="historical_weight" value="{{ configs.get('historical_weight', 1.0) }}" required>
+            <small>過去の評価（進捗度・しやすさ）をマッチングでどの程度重視するかを指定します。</small>
+        </div>
+        <div class="form-group">
+            <label for="recency_bias">直近評価重視度 (デフォルト: 0.1)</label>
+            <input type="number" step="0.1" name="recency_bias" id="recency_bias" value="{{ configs.get('recency_bias', 0.1) }}" required>
+            <small>古い評価よりも直近の評価をどれだけ大きく扱うかを設定します。大きいほど直近の評価が強く影響します。</small>
         </div>
 
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
