@@ -1042,7 +1042,7 @@ def event_save():
     if status == '実施':
         existing_active = Event.query.filter_by(organization_id=session['organization_id'], status='実施').first()
         if existing_active and (str(existing_active.id) != str(id)):
-            flash('既に「実施」状態のイベントが存在します', 'error')
+            flash('既に「実施」状態のイベントが存在するため、他のイベントを「実施」にできません。先に既存の「実施」イベントを「完了」または「実施後」に変更してください。', 'error')
             return redirect(url_for('events'))
 
     if id:
