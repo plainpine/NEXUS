@@ -48,7 +48,7 @@ def organization_required(f):
         if 'user_id' not in session:
             return redirect(url_for('login'))
         
-        user = User.query.get(session['user_id'])
+        user = db.session.get(User, session['user_id'])
         
         # 組織情報を必ずセット
         session['organization_id'] = user.organization_id
@@ -63,7 +63,7 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
             return redirect(url_for('login'))
-        user = User.query.get(session['user_id'])
+        user = db.session.get(User, session['user_id'])
         if not user or not user.is_admin:
             abort(403)
         return f(*args, **kwargs)
@@ -206,7 +206,7 @@ def organization_required(f):
         if 'user_id' not in session:
             return redirect(url_for('login'))
         
-        user = User.query.get(session['user_id'])
+        user = db.session.get(User, session['user_id'])
         
         # 組織情報を必ずセット
         session['organization_id'] = user.organization_id
@@ -219,7 +219,7 @@ def organization_required(f):
 def inject_user():
     user = None
     if 'user_id' in session:
-        user = User.query.get(session['user_id'])
+        user = db.session.get(User, session['user_id'])
     return dict(current_user=user)
 
 # 管理者チェックデコレータ
@@ -228,7 +228,7 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
             return redirect(url_for('login'))
-        user = User.query.get(session['user_id'])
+        user = db.session.get(User, session['user_id'])
         if not user or not user.is_admin:
             abort(403)
         return f(*args, **kwargs)
@@ -267,7 +267,7 @@ def logout():
 @app.route('/organizations')
 @admin_required
 def organizations():
-    if not User.query.get(session['user_id']).is_super_admin:
+    if not db.session.get(User, session['user_id']).is_super_admin:
         abort(403)
     organizations = Organization.query.all()
     return render_template('organizations.html', organizations=organizations)
@@ -276,7 +276,7 @@ def organizations():
 @app.route('/organization/add', methods=['POST'])
 @admin_required
 def org_add():
-    if not User.query.get(session['user_id']).is_super_admin:
+    if not db.session.get(User, session['user_id']).is_super_admin:
         abort(403)
     name = request.form['name']
     org = Organization(name=name)
@@ -288,9 +288,9 @@ def org_add():
 @app.route('/organization/delete/<int:id>')
 @admin_required
 def org_delete(id):
-    if not User.query.get(session['user_id']).is_super_admin:
+    if not db.session.get(User, session['user_id']).is_super_admin:
         abort(403)
-    org = Organization.query.get_or_404(id)
+    org = (db.session.get(Organization, id) or abort(404))
     db.session.delete(org)
     db.session.commit()
     return redirect(url_for('organizations'))
@@ -299,7 +299,7 @@ def org_delete(id):
 @app.route('/users')
 @admin_required
 def users():
-    if not User.query.get(session['user_id']).is_super_admin:
+    if not db.session.get(User, session['user_id']).is_super_admin:
         abort(403)
     # 新規ユーザ作成
     # 全ての管理者は is_admin=True とし、組織管理者かどうかのフラグを別に持たせるべきだが、
@@ -321,7 +321,7 @@ def users():
 def venues():
     org_id = session['organization_id']
     if 'org_name' not in session:
-        session['org_name'] = Organization.query.get(org_id).name
+        session['org_name'] = db.session.get(Organization, org_id).name
     venues = Venue.query.filter_by(organization_id=org_id).all()
     return render_template('venues.html', venues=venues)
 
@@ -335,7 +335,7 @@ def venue_save():
     org_id = session['organization_id']
     
     if id:
-        venue = Venue.query.get_or_404(id)
+        venue = (db.session.get(Venue, id) or abort(404))
         if venue.organization_id != org_id:
             abort(403)
         venue.name = name
@@ -350,7 +350,7 @@ def venue_save():
 @login_required
 @organization_required
 def venue_delete(id):
-    venue = Venue.query.get_or_404(id)
+    venue = (db.session.get(Venue, id) or abort(404))
     if venue.organization_id != session['organization_id']:
         abort(403)
     db.session.delete(venue)
@@ -367,7 +367,7 @@ def is_valid_username(username):
 @app.route('/user/add', methods=['POST'])
 @admin_required
 def user_add():
-    if not User.query.get(session['user_id']).is_super_admin:
+    if not db.session.get(User, session['user_id']).is_super_admin:
         abort(403)
     username = request.form['username']
     if not is_valid_username(username):
@@ -395,12 +395,12 @@ def user_add():
 @app.route('/user/edit/<int:id>')
 @admin_required
 def user_edit(id):
-    if not User.query.get(session['user_id']).is_super_admin:
+    if not db.session.get(User, session['user_id']).is_super_admin:
         abort(403)
     if id == 0:
         user = None
     else:
-        user = User.query.get_or_404(id)
+        user = (db.session.get(User, id) or abort(404))
     organizations = Organization.query.all()
     return render_template('user_edit.html', user=user, organizations=organizations)
 
@@ -410,7 +410,7 @@ def user_edit(id):
 def user_delete(id):
     if id == session.get('user_id'):
         return "自分自身を削除することはできません", 400
-    user = User.query.get_or_404(id)
+    user = (db.session.get(User, id) or abort(404))
     db.session.delete(user)
     db.session.commit()
     return redirect(url_for('users'))
@@ -425,7 +425,7 @@ def event_select():
     if request.method == 'POST':
         event_id = request.form.get('event_id')
         if event_id:
-            event = Event.query.get(event_id)
+            event = db.session.get(Event, event_id)
             if event.organization_id != org_id:
                 abort(403)
             session['selected_event_id'] = event.id
@@ -480,7 +480,7 @@ def teachers():
     saved = request.args.get('saved', False)
     
     if event_id:
-        event = Event.query.get(event_id)
+        event = db.session.get(Event, event_id)
         if event and event.organization_id == org_id:
             # 講師一覧の公開制限: 公開先が「生徒」の場合は非表示
             if request.endpoint == 'teachers' and event.publish_to == '生徒':
@@ -574,8 +574,8 @@ def teacher_add():
 @app.route('/teacher/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def teacher_edit(id):
-    teacher = Teacher.query.get_or_404(id)
-    current_user = User.query.get(session['user_id'])
+    teacher = (db.session.get(Teacher, id) or abort(404))
+    current_user = db.session.get(User, session['user_id'])
     # 管理者チェック: 本人または管理者のみ編集可能
     if not current_user.is_admin and current_user.id != teacher.user_id:
         abort(403)
@@ -645,7 +645,7 @@ def teacher_attend_save_individual():
     teacher_id = int(request.form.get('teacher_id'))
     event_id = request.form.get('event_id')
     
-    teacher = Teacher.query.get(teacher_id)
+    teacher = db.session.get(Teacher, teacher_id)
     is_attend = (request.form.get('attend') == 'true')
     
     if event_id:
@@ -656,7 +656,7 @@ def teacher_attend_save_individual():
             db.session.add(attendance)
         
         attendance.attend = is_attend
-        event = Event.query.get(int(event_id))
+        event = db.session.get(Event, int(event_id))
         if event.name == '学習会':
             # 会場
             attendance.venue_id = int(request.form.get('venue_id')) if request.form.get('venue_id') else None
@@ -687,7 +687,7 @@ def teacher_attend_save_individual():
 @app.route('/teacher/toggle/<int:id>')
 @login_required
 def teacher_toggle(id):
-    teacher = Teacher.query.get(id)
+    teacher = db.session.get(Teacher, id)
     teacher.attend = not teacher.attend
     db.session.commit()
     return redirect(url_for('teachers'))
@@ -696,7 +696,7 @@ def teacher_toggle(id):
 @app.route('/teacher/delete/<int:id>')
 @login_required
 def teacher_delete(id):
-    teacher = Teacher.query.get_or_404(id)
+    teacher = (db.session.get(Teacher, id) or abort(404))
     # 関連するユーザも削除
     if teacher.user:
         db.session.delete(teacher.user)
@@ -719,7 +719,7 @@ def students():
     saved = request.args.get('saved', False)
     
     if event_id:
-        event = Event.query.get(event_id)
+        event = db.session.get(Event, event_id)
         if event and event.organization_id == org_id:
             # 講師一覧の公開制限: 公開先が「生徒」の場合は非表示
             if request.endpoint == 'teachers' and event.publish_to == '生徒':
@@ -811,9 +811,9 @@ def student_add():
 @app.route('/student/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def student_edit(id):
-    student = Student.query.get_or_404(id)
+    student = (db.session.get(Student, id) or abort(404))
     # 管理者チェック: 本人または管理者のみ編集可能
-    current_user = User.query.get(session['user_id'])
+    current_user = db.session.get(User, session['user_id'])
     if not current_user.is_admin and current_user.id != student.user_id:
         abort(403)
         
@@ -863,7 +863,7 @@ def student_attend_save_individual():
     student_id = int(request.form.get('student_id'))
     event_id = request.form.get('event_id')
     
-    student = Student.query.get(student_id)
+    student = db.session.get(Student, student_id)
     is_attend = (request.form.get('attend') == 'true')
     
     if event_id:
@@ -874,7 +874,7 @@ def student_attend_save_individual():
             db.session.add(attendance)
         
         attendance.attend = is_attend
-        event = Event.query.get(int(event_id))
+        event = db.session.get(Event, int(event_id))
         if event.name == '学習会':
             # 会場
             attendance.venue_id = int(request.form.get('venue_id')) if request.form.get('venue_id') else None
@@ -906,7 +906,7 @@ def student_attend_save_individual():
 @login_required
 def teacher_dashboard():
     # 講師の所属組織を取得
-    user = User.query.get(session['user_id'])
+    user = db.session.get(User, session['user_id'])
     org_id = user.organization_id
     
     # イベント取得: 公開先が「生徒」のイベントは除外
@@ -927,7 +927,7 @@ def teacher_dashboard():
 @login_required
 def student_dashboard():
     # 生徒の所属組織を取得
-    user = User.query.get(session['user_id'])
+    user = db.session.get(User, session['user_id'])
     org_id = user.organization_id
     
     # イベント取得: 公開先が「講師」のイベントは除外
@@ -947,7 +947,7 @@ def student_dashboard():
 @app.route('/student/toggle/<int:id>')
 @login_required
 def student_toggle(id):
-    student = Student.query.get(id)
+    student = db.session.get(Student, id)
     student.attend = not student.attend
     db.session.commit()
     return redirect(url_for('students'))
@@ -956,7 +956,7 @@ def student_toggle(id):
 @app.route('/student/delete/<int:id>')
 @login_required
 def student_delete(id):
-    student = Student.query.get_or_404(id)
+    student = (db.session.get(Student, id) or abort(404))
     # 関連するユーザも削除
     if student.user:
         db.session.delete(student.user)
@@ -968,7 +968,7 @@ def student_delete(id):
 @app.route('/event/delete/<int:id>')
 @admin_required
 def event_delete(id):
-    event = Event.query.get_or_404(id)
+    event = (db.session.get(Event, id) or abort(404))
     # 現在選択中のイベントならセッションから削除
     if session.get('selected_event_id') == event.id:
         session.pop('selected_event_id', None)
@@ -1046,7 +1046,7 @@ def event_save():
             return redirect(url_for('events'))
 
     if id:
-        event = Event.query.get(id)
+        event = db.session.get(Event, id)
         if event.organization_id != session['organization_id']:
             abort(403)
         event.date = date
@@ -1073,7 +1073,7 @@ def event_save():
     
     # イベントの状態が変更された場合、セッションの選択中イベント情報を更新
     if session.get('selected_event_id') == int(id):
-        event = Event.query.get(id)
+        event = db.session.get(Event, id)
         session['selected_event_name'] = event.name
         session['selected_event_status'] = event.status
         
@@ -1086,14 +1086,14 @@ def event_save():
 def event_attendance_save():
     event_id = request.form.get('event_id')
     user_id = session['user_id']
-    event = Event.query.get(event_id)
+    event = db.session.get(Event, event_id)
     attend = ('attend' in request.form)
     subject1 = request.form.get('subject1')
     subject2 = request.form.get('subject2')
 
     # バリデーション
     if event.name == '学習会' and attend:
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if user.teacher_record:
             if subject1 == '欠席' and subject2 == '欠席':
                 return redirect(url_for('teacher_dashboard', error="出席する場合は、前半または後半の少なくとも一方を「出席」にしてください"))
@@ -1122,7 +1122,7 @@ def event_attendance_save():
 
     flash('出席状況を保存しました')
 
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if user.teacher_record:
         return redirect(url_for('teacher_dashboard'))
     else:
@@ -1144,17 +1144,15 @@ def matching_setup():
     if request.method == 'POST':
         event_id = request.form.get('event_id')
         venue_id = request.form.get('venue_id')
-        print(f"DEBUG: matching_setup POST -> event_id={event_id}, venue_id={venue_id}")
         session['selected_event_id'] = event_id # 必要に応じて更新
         session['selected_venue_id'] = venue_id # 選択した会場を保存
-        print(f"DEBUG: session updated -> selected_event_id={session.get('selected_event_id')}, selected_venue_id={session.get('selected_venue_id')}")
         return redirect(url_for('matching_setup'))
 
     event_id = session.get('selected_event_id')
     selected_venue_id = session.get('selected_venue_id')
 
     if event_id:
-        selected_event = Event.query.get(event_id)
+        selected_event = db.session.get(Event, event_id)
     
     teachers = []
     students = []
@@ -1229,7 +1227,7 @@ def matching_adjustment():
     # 調整用会場名
     venue_name = None
     if venue_id:
-        venue = Venue.query.get(venue_id)
+        venue = db.session.get(Venue, venue_id)
         if venue:
             venue_name = venue.name
     
@@ -1254,8 +1252,8 @@ def matching_adjustment():
     for t in teachers:
         adj_map[t.id] = {
             'teacher': t,
-            'fixed_students': [Student.query.get(m.student_id) for m in fixed_matches if m.teacher_id == t.id],
-            'adj_students': [Student.query.get(m.student_id) for m in adj_matches if m.teacher_id == t.id]
+            'fixed_students': [db.session.get(Student, m.student_id) for m in fixed_matches if m.teacher_id == t.id],
+            'adj_students': [db.session.get(Student, m.student_id) for m in adj_matches if m.teacher_id == t.id]
         }
         
     return render_template('matching_adjustment.html', adj_map=adj_map, event_id=event_id, venue_name=venue_name)
@@ -1267,21 +1265,18 @@ def save_adjustment():
     payload = request.json
     event_id = payload.get('event_id')
     data = payload.get('data')
-    print(f"DEBUG: save_adjustment -> event_id={event_id}, data={data}")
+
     
     AdjustedMatch.query.filter_by(event_id=event_id).delete()
     
     for t_id, s_ids in data.items():
-        print(f"DEBUG: Processing teacher={t_id}, students={s_ids}")
-        t = Teacher.query.get(t_id)
+        t = db.session.get(Teacher, t_id)
         if not t:
-            print(f"DEBUG: Skipping invalid teacher={t_id}")
             continue
             
         for s_id in s_ids:
-            s = Student.query.get(s_id)
+            s = db.session.get(Student, s_id)
             if not s:
-                print(f"DEBUG: Skipping invalid student={s_id}")
                 continue
                 
             # AdjustedMatch の venue_id をここで正しく設定する
@@ -1299,9 +1294,7 @@ def save_adjustment():
                 student=s.name
             )
             db.session.add(adj)
-            print(f"DEBUG: Added AdjustedMatch(event={event_id}, venue={venue_id}, teacher={t.name}, student={s.name})")
     db.session.commit()
-    print("DEBUG: Commit complete")
     return jsonify({"status": "success"})
 
 
@@ -1323,7 +1316,7 @@ def export_adjustment_excel():
     if not event_id:
         return redirect(url_for('event_select'))
     
-    event = Event.query.get(event_id)
+    event = db.session.get(Event, event_id)
     filename = f"{event.date.strftime('%Y%m%d')}_組合せ.xlsx"
     
     # 調整結果または自動マッチング結果を取得
@@ -1382,9 +1375,8 @@ def matching():
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
     # 禁止設定の取得
     prohibited = {(pm.student_id, pm.teacher_id) for pm in ProhibitedMatch.query.filter_by(organization_id=org_id).all()}
-    print(f"DEBUG: Loaded prohibited matches: {prohibited}")
 
-    target_event = Event.query.get(int(event_id))
+    target_event = db.session.get(Event, int(event_id))
     if not target_event:
         return "イベントが見つかりません", 404
 
@@ -1393,8 +1385,8 @@ def matching():
         attendances = [a for a in attendances if a.venue_id == int(venue_id)]
     
     # 講師・生徒の絞り込み
-    teacher_user_ids = [a.user_id for a in attendances if User.query.get(a.user_id) and User.query.get(a.user_id).teacher_record]
-    student_user_ids = [a.user_id for a in attendances if User.query.get(a.user_id) and User.query.get(a.user_id).student_record]
+    teacher_user_ids = [a.user_id for a in attendances if db.session.get(User, a.user_id) and db.session.get(User, a.user_id).teacher_record]
+    student_user_ids = [a.user_id for a in attendances if db.session.get(User, a.user_id) and db.session.get(User, a.user_id).student_record]
     
     teachers = Teacher.query.filter(Teacher.user_id.in_(teacher_user_ids)).all()
     students = Student.query.filter(Student.user_id.in_(student_user_ids)).all()
@@ -1409,7 +1401,7 @@ def matching():
     # 評価データの集計関数
     def add_eval_to_map(eval_list, achievement_attr, quality_attr):
         for e in eval_list:
-            event = Event.query.get(e.event_id)
+            event = db.session.get(Event, e.event_id)
             if not event: continue
             
             # 日付ベースの重み付け (直近ほど大きく)
@@ -1525,7 +1517,7 @@ def result():
     
     venue_name = None
     if venue_id:
-        venue = Venue.query.get(venue_id)
+        venue = db.session.get(Venue, venue_id)
         if venue:
             venue_name = venue.name
             
@@ -1535,7 +1527,7 @@ def result():
 @app.route('/post_study_session', methods=['GET'])
 @login_required
 def post_study_session():
-    user = User.query.get(session['user_id'])
+    user = db.session.get(User, session['user_id'])
     org_id = user.organization_id
     
     # 共通のベースクエリ
@@ -1619,7 +1611,7 @@ def evaluation_teacher():
     
     # 出席している講師のみ取得
     attendances = EventAttendance.query.filter_by(event_id=event_id, attend=True).all()
-    teacher_user_ids = [a.user_id for a in attendances if User.query.get(a.user_id) and User.query.get(a.user_id).teacher_record]
+    teacher_user_ids = [a.user_id for a in attendances if db.session.get(User, a.user_id) and db.session.get(User, a.user_id).teacher_record]
     participating_teachers = Teacher.query.filter(Teacher.user_id.in_(teacher_user_ids)).order_by(Teacher.name).all()
     
     matches = AdjustedMatch.query.filter_by(event_id=event_id).all()
@@ -1653,7 +1645,7 @@ def evaluation_teacher():
     for m in matches:
         if m.student_id not in data_map:
             data_map[m.student_id] = {
-                'student': Student.query.get(m.student_id),
+                'student': db.session.get(Student, m.student_id),
                 'evals': {'前半': None, '後半': None},
                 'teachers': {'前半': m.teacher_id, '後半': m.teacher_id} # デフォルト
             }
@@ -1668,7 +1660,7 @@ def evaluation_teacher():
     # ソート用にリスト化
     data = list(data_map.values())
     # 前半担当講師の氏名でソート
-    data.sort(key=lambda x: Teacher.query.get(x['teachers']['前半']).name if x['teachers']['前半'] else "")
+    data.sort(key=lambda x: db.session.get(Teacher, x['teachers']['前半']).name if x['teachers']['前半'] else "")
         
     return render_template('evaluation_teacher.html', data=data, teachers=participating_teachers, 
                            achievement_map=achievement_map, teachability_map=teachability_map)
@@ -1718,7 +1710,7 @@ def evaluation_student():
     for m in matches:
         if m.student_id not in data_map:
             data_map[m.student_id] = {
-                'student': Student.query.get(m.student_id),
+                'student': db.session.get(Student, m.student_id),
                 'evals': {'前半': None, '後半': None},
                 'teachers': {'前半': None, '後半': None},
                 'registered_by': None
@@ -1728,14 +1720,14 @@ def evaluation_student():
         for sub in ['前半', '後半']:
             t_eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=m.student_id, subject_type=sub).first()
             if t_eval:
-                data_map[m.student_id]['teachers'][sub] = Teacher.query.get(t_eval.teacher_id)
+                data_map[m.student_id]['teachers'][sub] = db.session.get(Teacher, t_eval.teacher_id)
                 eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=t_eval.teacher_id, student_id=m.student_id, subject_type=sub).first()
                 data_map[m.student_id]['evals'][sub] = eval
                 if eval and eval.registered_by:
                     data_map[m.student_id]['registered_by'] = eval.registered_by
             else:
                 # データがない場合はマッチング結果から取得
-                data_map[m.student_id]['teachers'][sub] = Teacher.query.get(m.teacher_id)
+                data_map[m.student_id]['teachers'][sub] = db.session.get(Teacher, m.teacher_id)
 
     # ソート用にリスト化
     data = list(data_map.values())

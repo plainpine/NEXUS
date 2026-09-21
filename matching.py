@@ -274,7 +274,6 @@ def simulated_annealing(teachers, students, config=None, prohibited_matches=None
 
             # 3. それでも見つからない場合は、禁止ペアであることを許容せざるを得ないが、ログを出す
             if not available_teachers:
-                print(f"DEBUG: WARNING: Cannot assign student {students[i].name} without violating prohibition.")
                 available_teachers = list(range(num_t))
 
             best_t_idx = max(available_teachers, key=lambda j: student_teacher_scores[i][j])
