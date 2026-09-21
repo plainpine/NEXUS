@@ -439,8 +439,32 @@ def event_select():
             session.pop('selected_event_status', None)
         return redirect(url_for('event_select'))
     
-    events = Event.query.filter_by(organization_id=org_id).order_by(Event.date).all()
-    return render_template('event_select.html', events=events)
+    # Get filters
+    hidden_statuses = request.args.getlist('hidden_status')
+    
+    # Check if form was submitted
+    if 'filter_applied' not in request.args:
+        # Initial load: Default to hiding '完了'
+        hidden_statuses = ['完了']
+        
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    query = Event.query.filter_by(organization_id=org_id)
+    
+    if hidden_statuses:
+        query = query.filter(~Event.status.in_(hidden_statuses))
+    
+    if start_date:
+        query = query.filter(Event.date >= datetime.strptime(start_date, '%Y-%m-%d'))
+    
+    if end_date:
+        query = query.filter(Event.date <= datetime.strptime(end_date, '%Y-%m-%d'))
+        
+    events = query.order_by(Event.date).all()
+    
+    return render_template('event_select.html', events=events, 
+                           hidden_statuses=hidden_statuses, start_date=start_date, end_date=end_date)
 
 # 講師一覧
 @app.route('/teachers')
@@ -964,9 +988,34 @@ def event_delete(id):
 @organization_required
 def events():
     org_id = session['organization_id']
-    events = Event.query.filter_by(organization_id=org_id).order_by(Event.date).all()
+    
+    # Get filters
+    hidden_statuses = request.args.getlist('hidden_status')
+    
+    # Check if form was submitted
+    if 'filter_applied' not in request.args:
+        # Initial load: Default to hiding '完了'
+        hidden_statuses = ['完了']
+        
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    query = Event.query.filter_by(organization_id=org_id)
+    
+    if hidden_statuses:
+        query = query.filter(~Event.status.in_(hidden_statuses))
+    
+    if start_date:
+        query = query.filter(Event.date >= datetime.strptime(start_date, '%Y-%m-%d'))
+    
+    if end_date:
+        query = query.filter(Event.date <= datetime.strptime(end_date, '%Y-%m-%d'))
+        
+    events = query.order_by(Event.date).all()
+    
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
-    return render_template('events.html', events=events, configs=configs)
+    return render_template('events.html', events=events, configs=configs, 
+                           hidden_statuses=hidden_statuses, start_date=start_date, end_date=end_date)
 
 # イベント保存 (追加・更新)
 @app.route('/event/save', methods=['POST'])

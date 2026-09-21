@@ -8,6 +8,36 @@
 </div>
 
 <div class="card">
+    <form action="/events" method="get" style="display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1rem; flex-wrap: wrap;">
+        <input type="hidden" name="filter_applied" value="true">
+        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <label>非表示イベント: </label>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; white-space: nowrap;">
+                {% for status in ['公開前', '実施前', '実施', '実施後', '完了'] %}
+                    <label style="margin: 0; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" name="hidden_status" value="{{ status }}" 
+                        {% if status in hidden_statuses %}checked{% endif %}>
+                        {{ status }}
+                    </label>
+                {% endfor %}
+            </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <label>期間: </label>
+            <div>
+                <input type="date" name="start_date" value="{{ start_date|default('') }}" class="form-control" style="display: inline-block; width: auto;">
+                〜
+                <input type="date" name="end_date" value="{{ end_date|default('') }}" class="form-control" style="display: inline-block; width: auto;">
+            </div>
+        </div>
+        <div style="display: flex; align-self: flex-end; gap: 0.5rem; padding-bottom: 0.25rem;">
+            <button type="submit" class="btn btn-primary">絞り込み</button>
+            <a href="/events" class="btn btn-outline">クリア</a>
+        </div>
+    </form>
+</div>
+
+<div class="card">
     <form action="/event/save" method="post" id="eventForm">
         <input type="hidden" name="id" id="eventId">
         <div style="margin-bottom: 1rem;">
