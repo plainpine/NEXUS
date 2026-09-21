@@ -117,6 +117,7 @@
         const customInput = document.getElementById('customEventName');
         const eventType = typeSelect.value;
         const publishTo = document.getElementById('publishTo');
+        const statusSelect = document.getElementById('status');
 
         if (eventType === 'そのほか') {
             customInput.style.display = 'block';
@@ -132,6 +133,28 @@
             document.getElementById('studentEnd').value = defaultConfigs[eventType + '_student_end'] || '17:00';
             publishTo.value = defaultConfigs[eventType + '_publish_to'] || '両方';
         }
+
+        // ステータスの動的制御
+        const currentStatus = statusSelect.value;
+        statusSelect.innerHTML = '';
+        const options = ['公開前', '実施前'];
+        if (eventType === '学習会') {
+            options.push('実施', '実施後');
+        }
+        options.push('完了');
+
+        options.forEach(opt => {
+            const el = document.createElement('option');
+            el.value = opt;
+            el.text = opt;
+            statusSelect.appendChild(el);
+        });
+        
+        if (options.includes(currentStatus)) {
+            statusSelect.value = currentStatus;
+        } else {
+            statusSelect.value = '公開前';
+        }
     }
 
     function editEvent(id, date, name, tStart, tEnd, sStart, sEnd, publishTo, status) {
@@ -142,7 +165,6 @@
         document.getElementById('studentStart').value = sStart;
         document.getElementById('studentEnd').value = sEnd;
         document.getElementById('publishTo').value = publishTo;
-        document.getElementById('status').value = status;
         
         const typeSelect = document.getElementById('eventType');
         const customInput = document.getElementById('customEventName');
@@ -155,6 +177,10 @@
             customInput.value = name;
             customInput.style.display = 'block';
         }
+
+        // ステータスの動的フィルターを適用してから値をセット
+        updateDefaultTimes();
+        document.getElementById('status').value = status;
     }
 
     // 初期化時にデフォルトを設定
