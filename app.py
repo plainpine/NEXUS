@@ -1070,6 +1070,13 @@ def event_save():
         event.venues = Venue.query.filter(Venue.id.in_(venue_ids)).all()
         db.session.add(event)
     db.session.commit()
+    
+    # イベントの状態が変更された場合、セッションの選択中イベント情報を更新
+    if session.get('selected_event_id') == int(id):
+        event = Event.query.get(id)
+        session['selected_event_name'] = event.name
+        session['selected_event_status'] = event.status
+        
     flash('イベントを保存しました')
     return redirect(url_for('events'))
 
