@@ -94,8 +94,6 @@ class Student(db.Model):
     name = db.Column(db.String(50), nullable=False)
     grade = db.Column(db.String(20))
     gender = db.Column(db.String(10))
-    subject1 = db.Column(db.String(20))
-    subject2 = db.Column(db.String(20))
     pref_gender = db.Column(db.String(10))
     pref_age1020_priority = db.Column(db.Integer, default=2)
     pref_age3040_priority = db.Column(db.Integer, default=2)
@@ -126,7 +124,7 @@ class Event(db.Model):
     teacher_end = db.Column(db.String(5), nullable=False)
     student_start = db.Column(db.String(5), nullable=False)
     student_end = db.Column(db.String(5), nullable=False)
-    publish_to = db.Column(db.String(20), default='両方')
+    publish_to = db.Column(db.String(20), default='両0')
     status = db.Column(db.String(20), default='公開前')
 
 class Config(db.Model):
@@ -150,12 +148,23 @@ class MatchResult(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=False)
     venue_id = db.Column(db.Integer, db.ForeignKey('venue.id'), nullable=False)
-    # 同名講師を区別するため、講師IDも保存する。
     teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=True)
-    # 同名生徒を区別するため、生徒IDも保存する。
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=True)
     teacher = db.Column(db.String(50))
     student = db.Column(db.String(50))
+    score = db.Column(db.Float, nullable=True)
+    
+    # 詳細スコアカラム
+    subject_score1 = db.Column(db.Float, nullable=True)
+    subject_score2 = db.Column(db.Float, nullable=True)
+    gender_score_t = db.Column(db.Float, nullable=True)
+    gender_score_s = db.Column(db.Float, nullable=True)
+    grade_score = db.Column(db.Float, nullable=True)
+    age_score = db.Column(db.Float, nullable=True)
+    hist_score_t_ach = db.Column(db.Float, nullable=True)
+    hist_score_t_tea = db.Column(db.Float, nullable=True)
+    hist_score_s_ach = db.Column(db.Float, nullable=True)
+    hist_score_s_lea = db.Column(db.Float, nullable=True)
 
 class AdjustedMatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -190,3 +199,8 @@ class ProhibitedMatch(db.Model):
     organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)
+
+class BestMatch(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.Integer, db.ForeignKey('event.id'), unique=True, nullable=False)
+    best_energy = db.Column(db.Float, nullable=False)

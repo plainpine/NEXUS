@@ -6,12 +6,20 @@ LAMBDA_TEACHER_CONSTRAINT = 1000 # 各講師の担当人数均等化
 
 # デフォルト設定値
 DEFAULT_CONFIG = {
-    "subject_proficiency_weight": 2.0,
+    "prof_excellent": 10, "prof_good": 5, "prof_poor": 0,
     "subject_mismatch_penalty": -40,
-    "gender_weight": 5,
-    "priority_1_bonus": 20,
-    "priority_2_bonus": 10,
-    "priority_3_bonus": 5
+    "gender_match_teacher": 5, "gender_no_pref_teacher": 0, "gender_mismatch_teacher": -5,
+    "gender_match_student": 5, "gender_no_pref_student": 0, "gender_mismatch_student": -5,
+    "grade_match_teacher": 20, "grade_no_pref_teacher": 10, "grade_mismatch_teacher": 0,
+    "age_match_student": 20, "age_no_pref_student": 10, "age_mismatch_student": 0,
+    "eval_t_ach_4": 2, "eval_t_ach_3": 1, "eval_t_ach_2": -1, "eval_t_ach_1": -2,
+    "weight_eval_t_ach": 1.0,
+    "eval_t_tea_4": 2, "eval_t_tea_3": 1, "eval_t_tea_2": -1, "eval_t_tea_1": -2,
+    "weight_eval_t_tea": 1.0,
+    "eval_s_ach_4": 2, "eval_s_ach_3": 1, "eval_s_ach_2": -1, "eval_s_ach_1": -2,
+    "weight_eval_s_ach": 1.0,
+    "eval_s_lea_4": 2, "eval_s_lea_3": 1, "eval_s_lea_2": -1, "eval_s_lea_1": -2,
+    "weight_eval_s_lea": 1.0
 }
 
 def safe_get_gender_char(gender_str):
@@ -19,8 +27,8 @@ def safe_get_gender_char(gender_str):
         return ""
     return gender_str[0]
 
-def get_subject_proficiency(teacher, sub_name):
-    # None、空文字列、「なし」は0点。未知の科目名も同様。
+def get_subject_proficiency(teacher, sub_name, config=None):
+    config = config or DEFAULT_CONFIG
     if not sub_name or sub_name == "なし":
         return 0
         
@@ -28,15 +36,15 @@ def get_subject_proficiency(teacher, sub_name):
     if not attr_name:
         return 0
 
-    # teacher に属性が存在しない場合も0点とする
     prof_val = getattr(teacher, attr_name, None)
-    
-    # 正常な適性値(1, 2, 3)以外は0点
     if prof_val not in [1, 2, 3]:
         return 0
         
-    # 得意:10, 対応可:5, 不得意:0
-    prof_map = {1: 10, 2: 5, 3: 0}
+    prof_map = {
+        1: int(config.get("prof_excellent", 10)),
+        2: int(config.get("prof_good", 5)),
+        3: int(config.get("prof_poor", 0))
+    }
     return prof_map.get(prof_val, 0)
 
 def sub_name_to_attr(sub_name):
@@ -52,101 +60,140 @@ def evaluation_rating_to_score(rating):
 # 禁止マッチング用コスト
 PROHIBITED_PENALTY = 1000000
 
-def score(teacher, student, config=None, historical_score=0):
-    config = config or DEFAULT_CONFIG
-    total = historical_score
-    
-    # 1. 科目のマッチング
-    s1_prof = get_subject_proficiency(teacher, student.subject1)
-    s2_prof = get_subject_proficiency(teacher, student.subject2)
-    
-    # 科目不一致ペナルティ
-    mismatch_penalty = float(config.get("subject_mismatch_penalty", DEFAULT_CONFIG["subject_mismatch_penalty"]))
-    if student.subject1 and student.subject1 != "なし" and s1_prof == 0:
-        total += mismatch_penalty
-    if student.subject2 and student.subject2 != "なし" and s2_prof == 0:
-        total += mismatch_penalty
-        
-    proficiency_weight = float(config.get("subject_proficiency_weight", DEFAULT_CONFIG["subject_proficiency_weight"]))
-    total += (s1_prof + s2_prof) * proficiency_weight
+def get_normalized_score(val, min_val, max_val, weight):
+    """値を0.0〜1.0に正規化し、重みを掛ける。"""
+    range_val = max_val - min_val
+    if range_val == 0: return 0
+    norm = (val - min_val) / range_val
+    return norm * weight
 
-    # 2. 性別マッチング (講師・生徒双方の希望を重視)
-    gender_weight = float(config.get("gender_weight", DEFAULT_CONFIG["gender_weight"]))
-    if teacher.pref_gender == "不問" or (teacher.pref_gender and student.gender and teacher.pref_gender == safe_get_gender_char(student.gender)):
-        total += gender_weight
-    if student.pref_gender == "不問" or (student.pref_gender and teacher.gender and student.pref_gender == safe_get_gender_char(teacher.gender)):
-        total += gender_weight
+def get_subject_score(teacher, sub_name, config):
+    if not sub_name or sub_name == "なし": return 0
+    attr_name = sub_name_to_attr(sub_name)
+    if not attr_name: return 0
     
-    # 3. 優先度マッチング (学年・年齢)
-    bonus_map = {
-        1: int(config.get("priority_1_bonus", DEFAULT_CONFIG["priority_1_bonus"])),
-        2: int(config.get("priority_2_bonus", DEFAULT_CONFIG["priority_2_bonus"])),
-        3: int(config.get("priority_3_bonus", DEFAULT_CONFIG["priority_3_bonus"]))
+    val = getattr(teacher, attr_name, 3) # default: 不得意(3)
+    # 設定から得点を取得
+    scores = {
+        1: int(config.get("prof_excellent", 10)),
+        2: int(config.get("prof_good", 5)),
+        3: int(config.get("prof_poor", 0))
     }
     
-    # 学年 (講師の希望)
-    p_grade = 2
-    if student.grade == "中3":
-        p_grade = teacher.pref_mid3_priority or 2
-    elif student.grade == "中2":
-        p_grade = teacher.pref_mid2_priority or 2
-    elif student.grade == "中1":
-        p_grade = teacher.pref_mid1_priority or 2
-    total += bonus_map.get(p_grade, 10)
+    # 正規化用の範囲
+    min_s = min(scores.values())
+    max_s = max(scores.values())
+    
+    return get_normalized_score(scores.get(val, 0), min_s, max_s, float(config.get("weight_subject", 1.0)))
 
-    # 年齢 (生徒の希望)
-    p_age = 2
-    if teacher.age == "ヤング":
-        p_age = student.pref_age1020_priority or 2
-    elif teacher.age == "アダルト":
-        p_age = min(student.pref_age3040_priority or 2, student.pref_age50_priority or 2)
-    total += bonus_map.get(p_age, 10)
-
-    return total
-
-def simulated_annealing(teachers, students, config=None, prohibited_matches=None, evaluation_map=None):
+def score(teacher, s1_sub, s2_sub, student_grade, teacher_age, student_pref_age1020_priority, student_pref_age3040_priority, student_pref_age50_priority, teacher_pref_gender, student_pref_gender, teacher_gender, student_gender, config=None, historical_data=None):
     config = config or DEFAULT_CONFIG
-    # 1. 堅牢性の向上：空入力時の処理
+    
+    # 正規化パラメータの設定
+    def get_norm(val, min_v, max_v, weight_key):
+        return get_normalized_score(val, min_v, max_v, float(config.get(weight_key, 1.0)))
+
+    details = {}
+    
+    # 科目
+    details['科目1'] = get_subject_score(teacher, s1_sub, config)
+    details['科目2'] = get_subject_score(teacher, s2_sub, config)
+    
+    mismatch_penalty = float(config.get("subject_mismatch_penalty", -40))
+    if (s1_sub and s1_sub not in ["なし", "欠席"] and get_subject_proficiency(teacher, s1_sub, config) == 0):
+        details['科目1'] += mismatch_penalty / 10
+    if (s2_sub and s2_sub not in ["なし", "欠席"] and get_subject_proficiency(teacher, s2_sub, config) == 0):
+        details['科目2'] += mismatch_penalty / 10
+
+    # 性別
+    def calc_gender(pref, gender, match_k, no_pref_k, mismatch_k, weight_k):
+        scores = [int(config.get(match_k, 5)), int(config.get(no_pref_k, 0)), int(config.get(mismatch_k, -5))]
+        if pref == "不問": return get_norm(scores[1], min(scores), max(scores), weight_k)
+        if pref and gender and pref == safe_get_gender_char(gender): return get_norm(scores[0], min(scores), max(scores), weight_k)
+        return get_norm(scores[2], min(scores), max(scores), weight_k)
+
+    details['講師性別'] = calc_gender(teacher.pref_gender, student_gender, "gender_match_teacher", "gender_no_pref_teacher", "gender_mismatch_teacher", "weight_gender_t")
+    details['生徒性別'] = calc_gender(student_pref_gender, teacher_gender, "gender_match_student", "gender_no_pref_student", "gender_mismatch_student", "weight_gender_s")
+
+    # 学年評価
+    def calc_grade(grade, t_mid1, t_mid2, t_mid3):
+        scores = [int(config.get("grade_match_teacher", 20)), int(config.get("grade_no_pref_teacher", 10)), int(config.get("grade_mismatch_teacher", 0))]
+        if grade == '中1' and t_mid1 == 3: return get_norm(scores[0], min(scores), max(scores), "weight_grade")
+        if grade == '中2' and t_mid2 == 3: return get_norm(scores[0], min(scores), max(scores), "weight_grade")
+        if grade == '中3' and t_mid3 == 3: return get_norm(scores[0], min(scores), max(scores), "weight_grade")
+        return get_norm(scores[2], min(scores), max(scores), "weight_grade")
+
+    details['学年評価'] = calc_grade(student_grade, teacher.pref_mid1_priority, teacher.pref_mid2_priority, teacher.pref_mid3_priority)
+
+    # 年齢評価
+    def calc_age(pref_1020, pref_3040, pref_50, age):
+        scores = [int(config.get("age_match_student", 20)), int(config.get("age_no_pref_student", 10)), int(config.get("age_mismatch_student", 0))]
+        try: age_int = int(age)
+        except: age_int = 30
+        age_cat = '1020' if age_int < 30 else ('3040' if age_int < 50 else '50')
+        priority = (pref_1020 if age_cat == '1020' else (pref_3040 if age_cat == '3040' else pref_50))
+        
+        if priority == 3: return get_norm(scores[0], min(scores), max(scores), "weight_age")
+        if priority == 2: return get_norm(scores[1], min(scores), max(scores), "weight_age")
+        return get_norm(scores[2], min(scores), max(scores), "weight_age")
+
+    details['年齢評価'] = calc_age(student_pref_age1020_priority, student_pref_age3040_priority, student_pref_age50_priority, teacher_age)
+
+    # 実績評価
+    details['実績t_ach'] = get_norm(0, -2, 2, 'weight_eval_t_ach')
+    details['実績t_tea'] = get_norm(0, -2, 2, 'weight_eval_t_tea')
+    details['実績s_ach'] = get_norm(0, -2, 2, 'weight_eval_s_ach')
+    details['実績s_lea'] = get_norm(0, -2, 2, 'weight_eval_s_lea')
+    if historical_data:
+        details['実績t_ach'] = get_norm(historical_data.get('t_ach', 0), -2, 2, 'weight_eval_t_ach')
+        details['実績t_tea'] = get_norm(historical_data.get('t_tea', 0), -2, 2, 'weight_eval_t_tea')
+        details['実績s_ach'] = get_norm(historical_data.get('s_ach', 0), -2, 2, 'weight_eval_s_ach')
+        details['実績s_lea'] = get_norm(historical_data.get('s_lea', 0), -2, 2, 'weight_eval_s_lea')
+
+    total = sum(details.values())
+    return total, details
+
+def simulated_annealing(teachers, students, attendances, config=None, prohibited_matches=None, evaluation_map=None):
+    config = config or DEFAULT_CONFIG
     if not teachers or not students:
         return [], 0.0
 
     num_t = len(teachers)
     num_s = len(students)
+    
+    # attendanceのマップを作成
+    att_map = {a.user_id: a for a in attendances}
 
-    # 各講師の担当人数の下限・上限。
-    min_teacher_load = num_s // num_t
-
-    # 最終結果は、下限人数に余りを加えた目標人数へ合わせる。
-    # これにより、下限・上限の範囲内でも一部の講師に偏ることを防ぐ。
+    # 各講師の担当人数
     base_count = num_s // num_t
     remainder = num_s % num_t
     target_counts = [base_count + (1 if j < remainder else 0) for j in range(num_t)]
 
-    # QUBOの構築
     qubo = {}
-
     def get_idx(s_idx, t_idx):
         return s_idx * num_t + t_idx
 
-    # 1. 目的関数: スコアの最大化 -> -スコアの最小化 (禁止マッチングはコストとして加算)
+    # スコア計算補助関数
+    def get_pair_score(t, s):
+        att = att_map.get(s.user_id)
+        if not att: return 0
+        total, _ = score(t, att.subject1, att.subject2, s.grade, t.age, 
+                     s.pref_age1020_priority, s.pref_age3040_priority, s.pref_age50_priority,
+                     t.pref_gender, s.pref_gender, t.gender, s.gender, config, 
+                     historical_data=(evaluation_map or {}).get((s.id, t.id)))
+        return total
+
+    # 1. 目的関数
     for i in range(num_s):
         for j in range(num_t):
             idx = get_idx(i, j)
             if prohibited_matches and (students[i].id, teachers[j].id) in prohibited_matches:
-                # 禁止マッチングは大きなコスト
                 qubo[(idx, idx)] = qubo.get((idx, idx), 0) + PROHIBITED_PENALTY
             else:
-                # スコアをマイナスする（最小化のため）
-                # ここでevaluation_mapから歴史的評価スコアを取得
-                hist_score = 0
-                if evaluation_map:
-                    hist_score = evaluation_map.get((students[i].id, teachers[j].id), 0)
-                
-                s_val = score(teachers[j], students[i], config, historical_score=hist_score)
+                s_val = get_pair_score(teachers[j], students[i])
                 qubo[(idx, idx)] = qubo.get((idx, idx), 0) - s_val
 
-
-    # 2. 制約1: 各生徒 i は必ず1人の講師を選択する
+    # 2. 制約1 (各生徒1講師)
     for i in range(num_s):
         for j in range(num_t):
             idx_j = get_idx(i, j)
@@ -155,7 +202,7 @@ def simulated_annealing(teachers, students, config=None, prohibited_matches=None
                 idx_k = get_idx(i, k)
                 qubo[(idx_j, idx_k)] = qubo.get((idx_j, idx_k), 0) + 2 * LAMBDA_STUDENT_CONSTRAINT
 
-    # 3. 制約2: 各講師 j は target_counts[j] 人を担当する
+    # 3. 制約2 (各講師担当人数)
     for j in range(num_t):
         Cj = target_counts[j]
         for i in range(num_s):
@@ -165,123 +212,32 @@ def simulated_annealing(teachers, students, config=None, prohibited_matches=None
                 idx_k = get_idx(k, j)
                 qubo[(idx_i, idx_k)] = qubo.get((idx_i, idx_k), 0) + 2 * LAMBDA_TEACHER_CONSTRAINT
 
-    # 4. アルゴリズム改善：複数回サンプリング
     sampler = oj.SASampler()
-    num_reads = int(config.get("num_reads", 100))
-    response = sampler.sample_qubo(qubo, num_reads=num_reads)
-    
-    # 最良解を取得
+    response = sampler.sample_qubo(qubo, num_reads=int(config.get("num_reads", 100)))
     best_solution = response.first
     sample = best_solution.sample
-    energy = best_solution.energy
     
-    results = []
-    # 各生徒を必ず1人の講師に割り当てるためのロジック
-    # 生徒ごとにスコア計算をしておく
-    student_teacher_scores = []
-    for i in range(num_s):
-        scores = [
-            score(
-                teachers[j],
-                students[i],
-                config,
-                historical_score=(evaluation_map or {}).get((students[i].id, teachers[j].id), 0),
-            )
-            for j in range(num_t)
-        ]
-        student_teacher_scores.append(scores)
-        
     assigned_teachers = [None] * num_s
     teacher_load = [0] * num_t
-
-    # QUBOの解を初期割当てとして採用する。サンプルが制約を完全に
-    # 満たさない場合は、容量に収まる選択だけを残して後段で補修する。
-    for student_idx in range(num_s):
-        sampled_teachers = [
-            teacher_idx
-            for teacher_idx in range(num_t)
-            if sample.get(get_idx(student_idx, teacher_idx), 0) == 1
-            and (prohibited_matches is None or
-                 (students[student_idx].id, teachers[teacher_idx].id) not in prohibited_matches)
-            and teacher_load[teacher_idx] < target_counts[teacher_idx]
-        ]
-        if sampled_teachers:
-            selected_teacher = max(
-                sampled_teachers,
-                key=lambda teacher_idx: student_teacher_scores[student_idx][teacher_idx],
-            )
-            assigned_teachers[student_idx] = selected_teacher
-            teacher_load[selected_teacher] += 1
     
-    # まず各講師の下限人数を確保する。
-    # これを後回しにすると、スコアの高い講師に生徒が集中して下限を満たせない。
-    for teacher_idx in range(num_t):
-        while teacher_load[teacher_idx] < min_teacher_load:
-            # 禁止マッチングを考慮して選択候補を絞る
-            available_students = [
-                i for i in range(num_s)
-                if assigned_teachers[i] is None and (prohibited_matches is None or (students[i].id, teachers[teacher_idx].id) not in prohibited_matches)
-            ]
-            if not available_students:
-                # 詰んだ場合、スコアが極端に低い（禁止マッチング）以外を許容するか、あるいはエラーにする
-                # ここではエラーとして上げる
-                raise RuntimeError(f"講師{teachers[teacher_idx].name}の担当人数下限を、禁止設定を守って満たせません")
-            student_idx = max(
-                available_students,
-                key=lambda i: student_teacher_scores[i][teacher_idx],
-            )
-            assigned_teachers[student_idx] = teacher_idx
-            teacher_load[teacher_idx] += 1
-
-    # 下限を確保した残りの生徒は、QUBOのサンプルをベースに割り当てる。
+    # 簡易的な割り当て補修
     for i in range(num_s):
-        if assigned_teachers[i] is not None:
-            continue
-
-        # QUBOで推奨された講師を優先し、解が不完全な場合だけ全候補へ広げる。
-        sampled_assignments = [
-            j for j in range(num_t)
-            if teacher_load[j] < target_counts[j] and (prohibited_matches is None or (students[i].id, teachers[j].id) not in prohibited_matches)
-            and sample.get(get_idx(i, j), 0) == 1
-        ]
-        potential_assignments = sampled_assignments or [
-            j for j in range(num_t)
-            if teacher_load[j] < target_counts[j]
-            and (prohibited_matches is None or (students[i].id, teachers[j].id) not in prohibited_matches)
-        ]
-
-        if potential_assignments:
-            # その中からスコアが最大になる講師を選ぶ
-            best_t_idx = max(potential_assignments, key=lambda j: student_teacher_scores[i][j])
-            assigned_teachers[i] = best_t_idx
-            teacher_load[best_t_idx] += 1
-            
-    # 未割り当ての生徒は、目標人数に達していない講師のうちスコア最高へ割り当てる。
+        for j in range(num_t):
+            if sample.get(get_idx(i, j), 0) == 1 and teacher_load[j] < target_counts[j]:
+                assigned_teachers[i] = j
+                teacher_load[j] += 1
+                break
+    
+    # 未割り当てを補填
     for i in range(num_s):
         if assigned_teachers[i] is None:
-            # 1. まず、目標人数以内で、禁止ペアではない講師を探す
-            available_teachers = [
-                j for j in range(num_t)
-                if teacher_load[j] < target_counts[j] and (prohibited_matches is None or (students[i].id, teachers[j].id) not in prohibited_matches)
-            ]
+            for j in range(num_t):
+                if teacher_load[j] < target_counts[j]:
+                    assigned_teachers[i] = j
+                    teacher_load[j] += 1
+                    break
+    
+    results = [(teachers[assigned_teachers[i]], students[i]) for i in range(num_s) if assigned_teachers[i] is not None]
+    return results, best_solution.energy
 
-            # 2. それで見つからない場合は、目標人数を無視して、禁止ペアではない講師を探す
-            if not available_teachers:
-                available_teachers = [
-                    j for j in range(num_t)
-                    if (prohibited_matches is None or (students[i].id, teachers[j].id) not in prohibited_matches)
-                ]
 
-            # 3. それでも見つからない場合は、禁止ペアであることを許容せざるを得ないが、ログを出す
-            if not available_teachers:
-                available_teachers = list(range(num_t))
-
-            best_t_idx = max(available_teachers, key=lambda j: student_teacher_scores[i][j])
-            assigned_teachers[i] = best_t_idx
-            teacher_load[best_t_idx] += 1
-            
-    # 最終的な結果作成
-    for i in range(num_s):
-        results.append((teachers[assigned_teachers[i]], students[i]))
-
-    return results, energy

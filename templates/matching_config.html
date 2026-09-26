@@ -1,66 +1,126 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    .weight-group { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 15px; flex-wrap: nowrap;}
+    .norm-val { font-weight: bold; color: var(--primary); min-width: 40px; text-align: center; margin-bottom: 8px;}
+    .input-wrapper { display: flex; flex-direction: column; gap: 5px; min-width: 90px; }
+    .input-wrapper label { font-size: 0.8rem; font-weight: normal; color: #555; }
+    .score-input { width: 80px; }
+    .weight-input { width: 80px; }
+    .form-group { margin-bottom: 2rem; border-bottom: 1px solid #eee; padding-bottom: 1rem; }
+</style>
 <div class="header">
     <h1>マッチング重み設定</h1>
 </div>
 
-<div class="card" style="max-width: 800px;">
-    <form method="post">
-        <h3>科目設定</h3>
+<div class="card" style="max-width: 900px;">
+    <form method="post" id="weightForm">
+        <h3>1. 科目設定</h3>
         <div class="form-group">
-            <label for="subject_proficiency_weight">科目適性の重み (デフォルト: 2.0)</label>
-            <input type="number" step="0.1" name="subject_proficiency_weight" id="subject_proficiency_weight" value="{{ configs.get('subject_proficiency_weight', 2.0) }}" required>
-            <small>講師が得意な科目の評価倍率です。値を大きくすると、より科目適性を重視したマッチングになります。</small>
+            <label>科目適性得点と重み</label>
+            <div class="weight-group">
+                <div class="input-wrapper"><label>得意</label><input type="number" name="prof_excellent" class="score-input" value="{{ configs.get('prof_excellent', 10) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>対応可</label><input type="number" name="prof_good" class="score-input" value="{{ configs.get('prof_good', 5) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>不得意</label><input type="number" name="prof_poor" class="score-input" value="{{ configs.get('prof_poor', 0) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>カテゴリ重み</label><input type="number" step="0.1" name="weight_subject" class="weight-input" value="{{ configs.get('weight_subject', 1.0) }}"></div>
+            </div>
+            <small>科目ごとの評価スコアと、科目項目全体の重要度です。</small>
         </div>
         <div class="form-group">
-            <label for="subject_mismatch_penalty">科目不一致ペナルティ (デフォルト: -40)</label>
-            <input type="number" name="subject_mismatch_penalty" id="subject_mismatch_penalty" value="{{ configs.get('subject_mismatch_penalty', -40) }}" required>
-            <small>希望科目が不得意な講師への割り当てを減点します。値を小さく（負の方向に）するほど、不得意な講師の割り当てが避けられます。</small>
-        </div>
-
-        <h3>性別設定</h3>
-        <div class="form-group">
-            <label for="gender_weight">性別マッチの重み (デフォルト: 5)</label>
-            <input type="number" name="gender_weight" id="gender_weight" value="{{ configs.get('gender_weight', 5) }}" required>
-            <small>希望する性別と一致した場合に加算されるスコアです。値を大きくすると、性別の希望がより重視されます。</small>
+            <label for="subject_mismatch_penalty">科目不一致ペナルティ</label>
+            <input type="number" name="subject_mismatch_penalty" id="subject_mismatch_penalty" value="{{ configs.get('subject_mismatch_penalty', -40) }}">
+            <small>希望科目が不得意な講師に割り当てた場合の減点。</small>
         </div>
 
-        <h3>優先度設定（講師の学年希望・生徒の年齢希望）</h3>
-        <p><small>マッチング設定における優先度「1:非常に優先」「2:優先」「3:普通」に割り当てるボーナススコアです。</small></p>
+        <h3>2. 性別設定</h3>
         <div class="form-group">
-            <label for="priority_1_bonus">優先度「1（非常に優先）」のボーナス (デフォルト: 20)</label>
-            <input type="number" name="priority_1_bonus" id="priority_1_bonus" value="{{ configs.get('priority_1_bonus', 20) }}" required>
-            <small>この設定が一致した時に加算されるスコアです。値を大きくすると、この優先度の講師/生徒がより選ばれやすくなります。</small>
+            <label>講師希望の性別マッチ</label>
+            <div class="weight-group">
+                <div class="input-wrapper"><label>一致</label><input type="number" name="gender_match_teacher" class="score-input" value="{{ configs.get('gender_match_teacher', 5) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>不問</label><input type="number" name="gender_no_pref_teacher" class="score-input" value="{{ configs.get('gender_no_pref_teacher', 0) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>不一致</label><input type="number" name="gender_mismatch_teacher" class="score-input" value="{{ configs.get('gender_mismatch_teacher', -5) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>重み</label><input type="number" step="0.1" name="weight_gender_t" class="weight-input" value="{{ configs.get('weight_gender_t', 1.0) }}"></div>
+            </div>
         </div>
         <div class="form-group">
-            <label for="priority_2_bonus">優先度「2（優先）」のボーナス (デフォルト: 10)</label>
-            <input type="number" name="priority_2_bonus" id="priority_3_bonus" value="{{ configs.get('priority_2_bonus', 10) }}" required>
-            <small>この設定が一致した時に加算されるスコアです。</small>
-        </div>
-        <div class="form-group">
-            <label for="priority_3_bonus">優先度「3（普通）」のボーナス (デフォルト: 5)</label>
-            <input type="number" name="priority_3_bonus" id="priority_3_bonus" value="{{ configs.get('priority_3_bonus', 5) }}" required>
-            <small>この設定が一致した時に加算されるスコアです。</small>
-        </div>
-
-        <h3>アルゴリズム設定</h3>
-        <div class="form-group">
-            <label for="num_reads">サンプリング回数 (デフォルト: 100)</label>
-            <input type="number" name="num_reads" id="num_reads" value="{{ configs.get('num_reads', 100) }}" required>
-            <small>アニーリングマシンによる探索回数です。大きくするほど良い結果が得られやすくなりますが、計算時間が増加します。</small>
+            <label>生徒希望の性別マッチ</label>
+            <div class="weight-group">
+                <div class="input-wrapper"><label>一致</label><input type="number" name="gender_match_student" class="score-input" value="{{ configs.get('gender_match_student', 5) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>不問</label><input type="number" name="gender_no_pref_student" class="score-input" value="{{ configs.get('gender_no_pref_student', 0) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>不一致</label><input type="number" name="gender_mismatch_student" class="score-input" value="{{ configs.get('gender_mismatch_student', -5) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>重み</label><input type="number" step="0.1" name="weight_gender_s" class="weight-input" value="{{ configs.get('weight_gender_s', 1.0) }}"></div>
+            </div>
         </div>
 
-        <h3>歴史的評価設定</h3>
+        <h3>3. 年齢・学年設定</h3>
         <div class="form-group">
-            <label for="historical_weight">歴史的評価の重み (デフォルト: 1.0)</label>
-            <input type="number" step="0.1" name="historical_weight" id="historical_weight" value="{{ configs.get('historical_weight', 1.0) }}" required>
-            <small>過去の評価（進捗度・しやすさ）をマッチングでどの程度重視するかを指定します。</small>
+            <label>講師希望の学年マッチ</label>
+            <div class="weight-group">
+                <div class="input-wrapper"><label>一致</label><input type="number" name="grade_match_teacher" class="score-input" value="{{ configs.get('grade_match_teacher', 20) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>不問</label><input type="number" name="grade_no_pref_teacher" class="score-input" value="{{ configs.get('grade_no_pref_teacher', 10) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>不一致</label><input type="number" name="grade_mismatch_teacher" class="score-input" value="{{ configs.get('grade_mismatch_teacher', 0) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>重み</label><input type="number" step="0.1" name="weight_grade" class="weight-input" value="{{ configs.get('weight_grade', 1.0) }}"></div>
+            </div>
         </div>
         <div class="form-group">
-            <label for="recency_bias">直近評価重視度 (デフォルト: 0.1)</label>
-            <input type="number" step="0.1" name="recency_bias" id="recency_bias" value="{{ configs.get('recency_bias', 0.1) }}" required>
-            <small>古い評価よりも直近の評価をどれだけ大きく扱うかを設定します。大きいほど直近の評価が強く影響します。</small>
+            <label>生徒希望の年齢マッチ</label>
+            <div class="weight-group">
+                <div class="input-wrapper"><label>一致</label><input type="number" name="age_match_student" class="score-input" value="{{ configs.get('age_match_student', 20) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>不問</label><input type="number" name="age_no_pref_student" class="score-input" value="{{ configs.get('age_no_pref_student', 10) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>不一致</label><input type="number" name="age_mismatch_student" class="score-input" value="{{ configs.get('age_mismatch_student', 0) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>重み</label><input type="number" step="0.1" name="weight_age" class="weight-input" value="{{ configs.get('weight_age', 1.0) }}"></div>
+            </div>
+        </div>
+
+        <h3>4. アルゴリズム設定</h3>
+        <div class="form-group">
+            <label for="num_reads">サンプリング回数</label>
+            <input type="number" name="num_reads" id="num_reads" value="{{ configs.get('num_reads', 100) }}">
+            <small>アニーリングの探索回数。大きいほど良い結果が得られやすい。</small>
+        </div>
+
+        <h3>5. 過去実績設定</h3>
+        <div class="form-group">
+            <label for="recency_bias">直近評価重視度</label>
+            <input type="number" step="0.1" name="recency_bias" id="recency_bias" value="{{ configs.get('recency_bias', 0.1) }}">
+            <small>古い評価よりも直近の評価をどれだけ重く扱うか。</small>
+        </div>
+
+        <p><strong>講師評価スコア</strong></p>
+        <div class="form-group">
+            <div class="weight-group">
+                <div class="input-wrapper"><label>よくできた</label><input type="number" name="eval_t_ach_4" class="score-input" value="{{ configs.get('eval_t_ach_4', 2) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>できた</label><input type="number" name="eval_t_ach_3" class="score-input" value="{{ configs.get('eval_t_ach_3', 1) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>あまりできない</label><input type="number" name="eval_t_ach_2" class="score-input" value="{{ configs.get('eval_t_ach_2', -1) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>できない</label><input type="number" name="eval_t_ach_1" class="score-input" value="{{ configs.get('eval_t_ach_1', -2) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>重み</label><input type="number" step="0.1" name="weight_eval_t_ach" class="weight-input" value="{{ configs.get('weight_eval_t_ach', 1.0) }}"></div>
+            </div>
+            <div class="weight-group">
+                <div class="input-wrapper"><label>とても教えやすい</label><input type="number" name="eval_t_tea_4" class="score-input" value="{{ configs.get('eval_t_tea_4', 2) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>教えやすい</label><input type="number" name="eval_t_tea_3" class="score-input" value="{{ configs.get('eval_t_tea_3', 1) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>少し教えにくい</label><input type="number" name="eval_t_tea_2" class="score-input" value="{{ configs.get('eval_t_tea_2', -1) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>教えにくい</label><input type="number" name="eval_t_tea_1" class="score-input" value="{{ configs.get('eval_t_tea_1', -2) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>重み</label><input type="number" step="0.1" name="weight_eval_t_tea" class="weight-input" value="{{ configs.get('weight_eval_t_tea', 1.0) }}"></div>
+            </div>
+        </div>
+
+        <p><strong>生徒の感想スコア</strong></p>
+        <div class="form-group">
+            <div class="weight-group">
+                <div class="input-wrapper"><label>よくできた</label><input type="number" name="eval_s_ach_4" class="score-input" value="{{ configs.get('eval_s_ach_4', 2) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>できた</label><input type="number" name="eval_s_ach_3" class="score-input" value="{{ configs.get('eval_s_ach_3', 1) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>あまりできない</label><input type="number" name="eval_s_ach_2" class="score-input" value="{{ configs.get('eval_s_ach_2', -1) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>できない</label><input type="number" name="eval_s_ach_1" class="score-input" value="{{ configs.get('eval_s_ach_1', -2) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>重み</label><input type="number" step="0.1" name="weight_eval_s_ach" class="weight-input" value="{{ configs.get('weight_eval_s_ach', 1.0) }}"></div>
+            </div>
+            <div class="weight-group">
+                <div class="input-wrapper"><label>とても学習しやすい</label><input type="number" name="eval_s_lea_4" class="score-input" value="{{ configs.get('eval_s_lea_4', 2) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>学習しやすい</label><input type="number" name="eval_s_lea_3" class="score-input" value="{{ configs.get('eval_s_lea_3', 1) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>少し学習しにくい</label><input type="number" name="eval_s_lea_2" class="score-input" value="{{ configs.get('eval_s_lea_2', -1) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>学習しにくい</label><input type="number" name="eval_s_lea_1" class="score-input" value="{{ configs.get('eval_s_lea_1', -2) }}"></div><span class="norm-val"></span>
+                <div class="input-wrapper"><label>重み</label><input type="number" step="0.1" name="weight_eval_s_lea" class="weight-input" value="{{ configs.get('weight_eval_s_lea', 1.0) }}"></div>
+            </div>
         </div>
 
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
@@ -69,4 +129,31 @@
         </div>
     </form>
 </div>
+
+<script>
+    function normalize() {
+        document.querySelectorAll('.weight-group').forEach(group => {
+            const scoreInputs = group.querySelectorAll('.score-input');
+            const scores = Array.from(scoreInputs).map(i => parseFloat(i.value) || 0);
+            
+            const max = Math.max(...scores);
+            const min = Math.min(...scores);
+            const range = max - min || 1;
+            
+            scoreInputs.forEach((input, index) => {
+                const val = parseFloat(input.value) || 0;
+                const normVal = (val - min) / range;
+                const display = normVal.toFixed(2);
+                
+                // inputの次の兄弟要素であるspanを更新
+                let next = input.parentElement.nextElementSibling;
+                if (next && next.classList.contains('norm-val')) {
+                    next.textContent = display;
+                }
+            });
+        });
+    }
+    document.getElementById('weightForm').addEventListener('change', normalize);
+    normalize();
+</script>
 {% endblock %}

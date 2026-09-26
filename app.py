@@ -3,8 +3,8 @@ import json
 from functools import wraps
 from datetime import datetime
 from sqlalchemy import inspect, text
-from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation, ProhibitedMatch
-from matching import simulated_annealing, evaluation_rating_to_score
+from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation, ProhibitedMatch, BestMatch
+from matching import simulated_annealing, evaluation_rating_to_score, score, get_subject_proficiency, DEFAULT_CONFIG
 import os
 
 app = Flask(__name__)
@@ -19,14 +19,21 @@ with app.app_context():
     if 'match_result' in inspector.get_table_names():
         columns = {column['name'] for column in inspector.get_columns('match_result')}
         missing_columns = {
-            'teacher_id': 'ALTER TABLE match_result ADD COLUMN teacher_id INTEGER',
-            'student_id': 'ALTER TABLE match_result ADD COLUMN student_id INTEGER',
+            'subject_score1': 'ALTER TABLE match_result ADD COLUMN subject_score1 FLOAT',
+            'subject_score2': 'ALTER TABLE match_result ADD COLUMN subject_score2 FLOAT',
+            'gender_score_t': 'ALTER TABLE match_result ADD COLUMN gender_score_t FLOAT',
+            'gender_score_s': 'ALTER TABLE match_result ADD COLUMN gender_score_s FLOAT',
+            'grade_score': 'ALTER TABLE match_result ADD COLUMN grade_score FLOAT',
+            'age_score': 'ALTER TABLE match_result ADD COLUMN age_score FLOAT',
+            'hist_score_t_ach': 'ALTER TABLE match_result ADD COLUMN hist_score_t_ach FLOAT',
+            'hist_score_t_tea': 'ALTER TABLE match_result ADD COLUMN hist_score_t_tea FLOAT',
+            'hist_score_s_ach': 'ALTER TABLE match_result ADD COLUMN hist_score_s_ach FLOAT',
+            'hist_score_s_lea': 'ALTER TABLE match_result ADD COLUMN hist_score_s_lea FLOAT',
         }
         for column_name, alter_statement in missing_columns.items():
             if column_name not in columns:
                 db.session.execute(text(alter_statement))
-        if any(column_name not in columns for column_name in missing_columns):
-            db.session.commit()
+        db.session.commit()
             
     if 'prohibited_match' not in inspector.get_table_names():
         db.session.execute(text('CREATE TABLE prohibited_match (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER, student_id INTEGER, teacher_id INTEGER, FOREIGN KEY(organization_id) REFERENCES organization(id), FOREIGN KEY(student_id) REFERENCES student(id), FOREIGN KEY(teacher_id) REFERENCES teacher(id))'))
@@ -1252,9 +1259,19 @@ def matching_adjustment():
     for t in teachers:
         adj_map[t.id] = {
             'teacher': t,
-            'fixed_students': [db.session.get(Student, m.student_id) for m in fixed_matches if m.teacher_id == t.id],
-            'adj_students': [db.session.get(Student, m.student_id) for m in adj_matches if m.teacher_id == t.id]
+            'fixed_students': [],
+            'adj_students': []
         }
+        
+    for m in fixed_matches:
+        student = db.session.get(Student, m.student_id)
+        attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=student.user_id).first()
+        adj_map[m.teacher_id]['fixed_students'].append({'student': student, 'attendance': attendance})
+        
+    for m in adj_matches:
+        student = db.session.get(Student, m.student_id)
+        attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=student.user_id).first()
+        adj_map[m.teacher_id]['adj_students'].append({'student': student, 'attendance': attendance})
         
     return render_template('matching_adjustment.html', adj_map=adj_map, event_id=event_id, venue_name=venue_name)
 
@@ -1357,8 +1374,18 @@ def export_adjustment_excel():
 @app.route('/matching', methods=['GET', 'POST'])
 @login_required
 def matching():
+    from models import BestMatch
     if request.method == 'POST':
+        # 既存のメッセージをクリア
+        session.pop('_flashes', None)
+        
         event_id = request.form.get('event_id')
+        
+        # 新しいマッチング実行前に、以前のデータをクリアする
+        BestMatch.query.filter_by(event_id=event_id).delete()
+        MatchResult.query.filter_by(event_id=event_id).delete()
+        AdjustedMatch.query.filter_by(event_id=event_id).delete()
+        db.session.commit()
     else:
         # GET の場合はセッションから取得
         event_id = session.get('selected_event_id')
@@ -1368,8 +1395,21 @@ def matching():
     
     org_id = session.get('organization_id')
     # 会場が選択されている場合はフィルタリング (会場が存在する場合のみ)
-    has_venues = Venue.query.filter_by(organization_id=org_id).count() > 0
-    venue_id = session.get('selected_venue_id') if has_venues else None
+    venues_in_org = Venue.query.filter_by(organization_id=org_id).all()
+    has_venues = len(venues_in_org) > 0
+    
+    venue_id = session.get('selected_venue_id')
+    
+    # 会場IDが現在の組織のものか確認
+    if venue_id:
+        venue = db.session.get(Venue, venue_id)
+        if not venue or venue.organization_id != org_id:
+            venue_id = None
+            session.pop('selected_venue_id', None)
+    
+    if not has_venues:
+        venue_id = None
+        session.pop('selected_venue_id', None)
     
     # 設定をDBから取得
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
@@ -1399,7 +1439,7 @@ def matching():
     recency_bias = float(configs.get('recency_bias', 0.1)) # 1イベントごとに bias ずつ重みが増える
     
     # 評価データの集計関数
-    def add_eval_to_map(eval_list, achievement_attr, quality_attr):
+    def add_eval_to_map(eval_list, achievement_attr, quality_attr, map_key_ach, map_key_qual):
         for e in eval_list:
             event = db.session.get(Event, e.event_id)
             if not event: continue
@@ -1408,13 +1448,18 @@ def matching():
             days_ago = (datetime.now() - event.date).days
             weight = 1.0 + (recency_bias * max(0, 100 - days_ago // 7))
 
-            score = evaluation_rating_to_score(getattr(e, achievement_attr))
-            score += evaluation_rating_to_score(getattr(e, quality_attr))
+            ach_score = evaluation_rating_to_score(getattr(e, achievement_attr))
+            qual_score = evaluation_rating_to_score(getattr(e, quality_attr))
             pair = (e.student_id, e.teacher_id)
             
-            # 加重平均のために、(合計スコア, 合計重み)を保持
-            current_sum, current_weight_sum = evaluation_map.get(pair, (0, 0))
-            evaluation_map[pair] = (current_sum + score * weight, current_weight_sum + weight)
+            if pair not in evaluation_map:
+                evaluation_map[pair] = {'t_ach': [0,0], 't_tea': [0,0], 's_ach': [0,0], 's_lea': [0,0]}
+            
+            # 項目ごとに加重平均用の値を保持 (合計スコア, 合計重み)
+            evaluation_map[pair][map_key_ach][0] += ach_score * weight
+            evaluation_map[pair][map_key_ach][1] += weight
+            evaluation_map[pair][map_key_qual][0] += qual_score * weight
+            evaluation_map[pair][map_key_qual][1] += weight
     
     # 対象組織の完了済み学習会だけを、過去評価として集計する。
     completed_statuses = ['実施後', '完了']
@@ -1428,100 +1473,200 @@ def matching():
     teacher_evaluations = TeacherEvaluation.query.filter(
         TeacherEvaluation.event_id.in_(completed_events)
     ).all()
-    add_eval_to_map(teacher_evaluations, 'achievement', 'teachability')
+    add_eval_to_map(teacher_evaluations, 'achievement', 'teachability', 't_ach', 't_tea')
     # StudentEvaluation (生徒による講師評価)
     student_evaluations = StudentEvaluation.query.filter(
         StudentEvaluation.event_id.in_(completed_events)
     ).all()
-    add_eval_to_map(student_evaluations, 'achievement', 'learnability')
+    add_eval_to_map(student_evaluations, 'achievement', 'learnability', 's_ach', 's_lea')
     
     # 最終的なスコアへの変換 (加重平均)
     final_evaluation_map = {}
-    for pair, (sum_score, sum_weight) in evaluation_map.items():
-        final_evaluation_map[pair] = (sum_score / sum_weight) * historical_weight
+    for pair, data in evaluation_map.items():
+        final_evaluation_map[pair] = {
+            k: (v[0] / v[1] if v[1] > 0 else 0) for k, v in data.items()
+        }
         
     # ---------------------------
 
     # マッチングロジック (設定を渡すように変更)
-    results, energy = simulated_annealing(teachers, students, configs, prohibited, evaluation_map=final_evaluation_map)
+    results, energy = simulated_annealing(teachers, students, attendances, configs, prohibited, evaluation_map=final_evaluation_map)
 
+    # ベストスコアの更新処理
+    from models import BestMatch
+    best_match_record = BestMatch.query.filter_by(event_id=event_id).first()
+    
+    # 今回の結果を一時的にセッションに保存（比較表示用）
+    session['latest_energy'] = energy
+    
+    # 比較: 今回の方が「エネルギーが低い（＝良い）」場合のみ更新
+    if not best_match_record or energy < best_match_record.best_energy:
+        if not best_match_record:
+            best_match_record = BestMatch(event_id=event_id, best_energy=energy)
+            db.session.add(best_match_record)
+        else:
+            best_match_record.best_energy = energy
 
-    session['last_energy'] = energy
-    # ... (rest of function unchanged)
+        # 既存のマッチング結果をクリア
+        MatchResult.query.filter_by(event_id=event_id).delete()
 
-    session['last_energy'] = energy
+        attendance_map = {a.user_id: a for a in attendances}
 
-    # 既存の調整結果をクリア
-    AdjustedMatch.query.filter_by(event_id=event_id).delete()
-    MatchResult.query.filter_by(event_id=event_id).delete()
-
-    attendance_map = {a.user_id: a for a in attendances}
-
-    for t, s in results:
-        # 講師または生徒の出席レコードから venue_id を取得
-        t_attendance = attendance_map.get(t.user_id)
-        s_attendance = attendance_map.get(s.user_id)
-        venue_id = None
-        if t_attendance and t_attendance.venue_id:
-            venue_id = t_attendance.venue_id
-        elif s_attendance and s_attendance.venue_id:
-            venue_id = s_attendance.venue_id
-        elif t.default_venue_id:
-            venue_id = t.default_venue_id
-        elif s.default_venue_id:
-            venue_id = s.default_venue_id
+        for t, s in results:
+            # 講師または生徒の出席レコードから venue_id を取得
+            t_attendance = attendance_map.get(t.user_id)
+            s_attendance = attendance_map.get(s.user_id)
+            venue_id = None
+            if t_attendance and t_attendance.venue_id:
+                venue_id = t_attendance.venue_id
+            elif s_attendance and s_attendance.venue_id:
+                venue_id = s_attendance.venue_id
+            elif t.default_venue_id:
+                venue_id = t.default_venue_id
+            elif s.default_venue_id:
+                venue_id = s.default_venue_id
+                
+            if not venue_id:
+                # venue_id が取得できない場合、適当なデフォルト値を使う
+                first_venue = Venue.query.filter_by(organization_id=org_id).first()
+                venue_id = first_venue.id if first_venue else 1
             
-        if not venue_id:
-            # venue_id が取得できない場合、適当なデフォルト値を使う
-            first_venue = Venue.query.filter_by(organization_id=org_id).first()
-            if first_venue:
-                venue_id = first_venue.id
-            else:
-                # 会場が一つもない場合はエラーとするかダミーIDを入れる必要があるが、
-                # ここではIntegrityErrorを避けるためダミー値として1を設定 (会場IDは1から始まる前提)
-                venue_id = 1 
+            # 再取得して保存
+            # そのペアの hist_score を計算用に取得
+            hist_score = (final_evaluation_map or {}).get((s.id, t.id), 0)
+            
+            # 講師または生徒の出席レコードから科目を取得
+            att_sub1 = s_attendance.subject1 if s_attendance else 'なし'
+            att_sub2 = s_attendance.subject2 if s_attendance else 'なし'
+            
+            # ペアごとのスコアを再計算
+            pair_score, details = score(
+                t, att_sub1, att_sub2, s.grade, t.age,
+                s.pref_age1020_priority, s.pref_age3040_priority, s.pref_age50_priority,
+                t.pref_gender, s.pref_gender, t.gender, s.gender,
+                configs, historical_data=final_evaluation_map.get((s.id, t.id))
+            )
 
-        r = MatchResult(
-            event_id=event_id,
-            venue_id=venue_id,
-            teacher_id=t.id,
-            student_id=s.id,
-            teacher=t.name,
-            student=s.name,
-        )
-        db.session.add(r)
-
-    db.session.commit()
-    flash('マッチングを再実行しました')
+            new_match = MatchResult(
+                event_id=event_id,
+                venue_id=venue_id,
+                teacher_id=t.id,
+                student_id=s.id,
+                teacher=t.name,
+                student=s.name,
+                score=float(pair_score),
+                subject_score1=float(details.get('科目1', 0)),
+                subject_score2=float(details.get('科目2', 0)),
+                gender_score_t=float(details.get('講師性別', 0)),
+                gender_score_s=float(details.get('生徒性別', 0)),
+                grade_score=float(details.get('学年評価', 0)),
+                age_score=float(details.get('年齢評価', 0)),
+                hist_score_t_ach=float(details.get('実績t_ach', 0)),
+                hist_score_t_tea=float(details.get('実績t_tea', 0)),
+                hist_score_s_ach=float(details.get('実績s_ach', 0)),
+                hist_score_s_lea=float(details.get('実績s_lea', 0))
+            )
+            db.session.add(new_match)
+        db.session.commit()
+        flash('新しいベストマッチング結果を保存しました')
+    else:
+        flash('今回の結果は以前より悪かったため、保存されませんでした。')
+    
+    session['last_energy'] = energy
+    session['last_run_time'] = datetime.now().strftime('%H:%M:%S')
     return redirect(url_for('result', event_id=event_id))
+
+def get_score_details_v2(teacher, student, attendance, config=None, historical_data=None):
+    config = config or DEFAULT_CONFIG
+    
+    # 実際のマッチングロジック(score関数)を呼び出して数値内訳を取得
+    att_subject1 = attendance.subject1 if attendance else 'なし'
+    att_subject2 = attendance.subject2 if attendance else 'なし'
+    
+    total, details = score(
+        teacher, att_subject1, att_subject2, student.grade, teacher.age,
+        student.pref_age1020_priority, student.pref_age3040_priority, student.pref_age50_priority,
+        teacher.pref_gender, student.pref_gender, teacher.gender, student.gender,
+        config, historical_data=historical_data
+    )
+    
+    # UI表示用のフォーマットに変換
+    formatted_details = {}
+    
+    # 科目評価
+    formatted_details['科目評価'] = f"前半 {details['前半科目']:.2f}, 後半 {details['後半科目']:.2f}"
+    
+    # 性別評価
+    formatted_details['生徒性別'] = f"{details['講師希望性別']:.2f}"
+    formatted_details['講師性別'] = f"{details['生徒希望性別']:.2f}"
+    
+    # 学年・年齢評価
+    formatted_details['学年評価'] = f"{details['学年評価']:.2f}"
+    formatted_details['年齢評価'] = f"{details['年齢評価']:.2f}"
+    
+    # 実績評価
+    formatted_details['実績評価'] = f"{details['実績評価']:.2f}"
+    formatted_details['合計スコア'] = f"{total:.2f}"
+    
+    return formatted_details
 
 @app.route('/result')
 @login_required
 def result():
     sort_by = request.args.get('sort', 'teacher')
     event_id = request.args.get('event_id', type=int) or session.get('selected_event_id')
-    venue_id = session.get('selected_venue_id')
     
-    query = MatchResult.query
-    if event_id:
-        query = query.filter_by(event_id=event_id)
-        if venue_id:
-            query = query.filter_by(venue_id=venue_id)
-    else:
-        query = query.filter(False)
+    if not event_id:
+        return redirect(url_for('event_select'))
 
+    query = MatchResult.query.filter_by(event_id=event_id)
     if sort_by == 'student':
         results = query.order_by(MatchResult.student, MatchResult.student_id).all()
     else:
         results = query.order_by(MatchResult.teacher, MatchResult.teacher_id).all()
     
+    # 結果にプロフィール情報と出席情報を紐付ける
+    enriched_results = []
+    
+    for r in results:
+        teacher = db.session.get(Teacher, r.teacher_id)
+        student = db.session.get(Student, r.student_id)
+        t_attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=teacher.user_id if teacher else None).first()
+        s_attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=student.user_id if student else None).first()
+        
+        # データベースから詳細スコアを取得
+        score_details = {
+            '科目': [f"前半: {(r.subject_score1 or 0):.2f}", f"後半: {(r.subject_score2 or 0):.2f}", f"合計: {((r.subject_score1 or 0) + (r.subject_score2 or 0)):.2f}"],
+            '性別': [f"講師希望: {(r.gender_score_t or 0):.2f}", f"生徒希望: {(r.gender_score_s or 0):.2f}", f"合計: {((r.gender_score_t or 0) + (r.gender_score_s or 0)):.2f}"],
+            '学年・年齢': [f"学年: {(r.grade_score or 0):.2f}", f"年齢: {(r.age_score or 0):.2f}", f"合計: {((r.grade_score or 0) + (r.age_score or 0)):.2f}"],
+            '実績': [
+                f"講師(進捗/教): {(r.hist_score_t_ach or 0):.2f} / {(r.hist_score_t_tea or 0):.2f}", 
+                f"生徒(進捗/学): {(r.hist_score_s_ach or 0):.2f} / {(r.hist_score_s_lea or 0):.2f}", 
+                f"合計: {((r.hist_score_t_ach or 0) + (r.hist_score_t_tea or 0) + (r.hist_score_s_ach or 0) + (r.hist_score_s_lea or 0)):.2f}"
+            ],
+            '合計スコア': f"{(r.score or 0):.2f}"
+        }
+        
+        enriched_results.append({
+            'result': r,
+            'teacher': teacher,
+            'student': student,
+            't_attendance': t_attendance,
+            's_attendance': s_attendance,
+            'score_details': score_details
+        })
+
     venue_name = None
+    venue_id = session.get('selected_venue_id')
     if venue_id:
         venue = db.session.get(Venue, venue_id)
         if venue:
             venue_name = venue.name
             
-    return render_template('result.html', results=results, sort_by=sort_by, venue_name=venue_name)
+    best_match_record = BestMatch.query.filter_by(event_id=event_id).first()
+    best_energy = best_match_record.best_energy if best_match_record else None
+
+    return render_template('result.html', results=enriched_results, sort_by=sort_by, venue_name=venue_name, best_energy=best_energy)
 
 # 学習会実施ダッシュボード
 @app.route('/post_study_session', methods=['GET'])
