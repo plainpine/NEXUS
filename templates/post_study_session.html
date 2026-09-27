@@ -25,76 +25,82 @@
 
 <div class="card">
     <div class="table-container">
-        <form action="{{ url_for('post_study_session_save') }}" method="post">
-            <table class="evaluation-table">
-                <thead>
-                    <tr>
-                        <th style="width: 5%;">登録</th>
-                        <th style="width: 10%;">日程</th>
-                        <th style="width: 8%;">前半科目</th>
-                        <th style="width: 13%;">前半：学習進捗度</th>
-                        <th style="width: 13%;">前半：学習しやすさ</th>
-                        <th style="width: 8%;">後半科目</th>
-                        <th style="width: 13%;">後半：学習進捗度</th>
-                        <th style="width: 13%;">後半：学習しやすさ</th>
-                        <th style="width: 7%;">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for event in events %}
-                    {% set attendance = attendance_map.get(event.id) %}
-                    <tr>
-                        <input type="hidden" name="event_id" value="{{event.id}}">
-                        <td>
-                            {% if attendance and attendance.updated_by %}
-                                {% if attendance.updated_by == 'user' %}★
-                                {% elif attendance.updated_by == 'admin' %}☆
-                                {% endif %}
+<div class="card">
+    <div class="table-container">
+        <table class="evaluation-table">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">登録</th>
+                    <th style="width: 10%;">日程</th>
+                    <th style="width: 8%;">前半科目</th>
+                    <th style="width: 13%;">前半：学習進捗度</th>
+                    <th style="width: 13%;">前半：学習しやすさ</th>
+                    <th style="width: 8%;">後半科目</th>
+                    <th style="width: 13%;">後半：学習進捗度</th>
+                    <th style="width: 13%;">後半：学習しやすさ</th>
+                    <th style="width: 7%;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in events %}
+                {% set attendance = attendance_map.get(event.id) %}
+                {% set event_evals = evaluations.get(event.id, {}) %}
+                <tr>
+                    <form action="{{ url_for('post_study_session_save') }}" method="post">
+                    <input type="hidden" name="event_id" value="{{event.id}}">
+                    <td>
+                        {% if attendance and attendance.updated_by %}
+                            {% if attendance.updated_by == 'user' %}★
+                            {% elif attendance.updated_by == 'admin' %}☆
                             {% endif %}
-                        </td>
-                        <td>{{ event.date.strftime('%Y-%m-%d') }}</td>
-                        <td>{{ attendance.subject1 if attendance else '-' }}</td>
-                        <td>
-                            <select name="achievement_前半">
-                                <option value="4">とてもよくできた</option>
-                                <option value="3">よくできた</option>
-                                <option value="2">あまりできなかった</option>
-                                <option value="1">できなかった</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select name="learnability_前半">
-                                <option value="4">とてもしやすい</option>
-                                <option value="3">しやすい</option>
-                                <option value="2">少ししにくい</option>
-                                <option value="1">しにくい</option>
-                            </select>
-                        </td>
-                        <td>{{ attendance.subject2 if attendance else '-' }}</td>
-                        <td>
-                            <select name="achievement_後半">
-                                <option value="4">とてもよくできた</option>
-                                <option value="3">よくできた</option>
-                                <option value="2">あまりできなかった</option>
-                                <option value="1">できなかった</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select name="learnability_後半">
-                                <option value="4">とてもしやすい</option>
-                                <option value="3">しやすい</option>
-                                <option value="2">少ししにくい</option>
-                                <option value="1">しにくい</option>
-                            </select>
-                        </td>
-                        <td>
-                            <button type="submit" class="btn btn-primary">保存</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </form>
+                        {% endif %}
+                    </td>
+                    <td>{{ event.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ attendance.subject1 if attendance else '-' }}</td>
+                    <td>
+                        {% set sub1_eval = event_evals.get('前半') %}
+                        <select name="achievement_前半">
+                            {% for val, label in [('4', 'とてもよくできた'), ('3', 'よくできた'), ('2', 'あまりできなかった'), ('1', 'できなかった')] %}
+                            <option value="{{val}}" {% if sub1_eval and sub1_eval.achievement|string == val %}selected{% endif %}>{{label}}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        {% set sub1_eval = event_evals.get('前半') %}
+                        <select name="learnability_前半">
+                            {% for val, label in [('4', 'とてもしやすい'), ('3', 'しやすい'), ('2', '少ししにくい'), ('1', 'しにくい')] %}
+                            <option value="{{val}}" {% if sub1_eval and sub1_eval.learnability|string == val %}selected{% endif %}>{{label}}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>{{ attendance.subject2 if attendance else '-' }}</td>
+                    <td>
+                        {% set sub2_eval = event_evals.get('後半') %}
+                        <select name="achievement_後半">
+                            {% for val, label in [('4', 'とてもよくできた'), ('3', 'よくできた'), ('2', 'あまりできなかった'), ('1', 'できなかった')] %}
+                            <option value="{{val}}" {% if sub2_eval and sub2_eval.achievement|string == val %}selected{% endif %}>{{label}}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        {% set sub2_eval = event_evals.get('後半') %}
+                        <select name="learnability_後半">
+                            {% for val, label in [('4', 'とてもしやすい'), ('3', 'しやすい'), ('2', '少ししにくい'), ('1', 'しにくい')] %}
+                            <option value="{{val}}" {% if sub2_eval and sub2_eval.learnability|string == val %}selected{% endif %}>{{label}}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <button type="submit" class="btn btn-primary">保存</button>
+                    </td>
+                    </form>
+                </tr>
+                {% endfor %}
+
+            </tbody>
+        </table>
+    </div>
+</div>
     </div>
 </div>
 {% endblock %}

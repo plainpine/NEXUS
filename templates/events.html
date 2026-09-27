@@ -44,7 +44,7 @@
             <label>日程: </label>
             <input type="date" name="date" id="eventDate" required class="form-control">
             <label>イベント: </label>
-            <select name="event_type" id="eventType" class="form-control" onchange="updateDefaultTimes()">
+            <select name="event_type" id="eventType" class="form-control" onchange="updateDefaultTimes(true)">
                 <option value="学習会">学習会</option>
                 <option value="会議">会議</option>
                 <option value="そのほか">そのほか</option>
@@ -112,7 +112,7 @@
 <script>
     const defaultConfigs = {{ configs|tojson|safe }};
 
-    function updateDefaultTimes() {
+    function updateDefaultTimes(applyDefaults = false) {
         const typeSelect = document.getElementById('eventType');
         const customInput = document.getElementById('customEventName');
         const eventType = typeSelect.value;
@@ -126,12 +126,14 @@
             customInput.style.display = 'none';
             customInput.required = false;
             
-            // デフォルト値をセット
-            document.getElementById('teacherStart').value = defaultConfigs[eventType + '_teacher_start'] || '10:00';
-            document.getElementById('teacherEnd').value = defaultConfigs[eventType + '_teacher_end'] || '17:00';
-            document.getElementById('studentStart').value = defaultConfigs[eventType + '_student_start'] || '10:00';
-            document.getElementById('studentEnd').value = defaultConfigs[eventType + '_student_end'] || '17:00';
-            publishTo.value = defaultConfigs[eventType + '_publish_to'] || '両方';
+            if (applyDefaults) {
+                // デフォルト値をセット
+                document.getElementById('teacherStart').value = defaultConfigs[eventType + '_teacher_start'] || '10:00';
+                document.getElementById('teacherEnd').value = defaultConfigs[eventType + '_teacher_end'] || '17:00';
+                document.getElementById('studentStart').value = defaultConfigs[eventType + '_student_start'] || '10:00';
+                document.getElementById('studentEnd').value = defaultConfigs[eventType + '_student_end'] || '17:00';
+                publishTo.value = defaultConfigs[eventType + '_publish_to'] || '両方';
+            }
         }
 
         // ステータスの動的制御
@@ -178,13 +180,17 @@
             customInput.style.display = 'block';
         }
 
-        // ステータスの動的フィルターを適用してから値をセット
-        updateDefaultTimes();
+        // ステータスの動的フィルターを適用（applyDefaults = falseで時間やpublishToを上書きしない）
+        updateDefaultTimes(false);
         document.getElementById('status').value = status;
     }
 
     // 初期化時にデフォルトを設定
-    window.onload = updateDefaultTimes;
+    window.onload = function() {
+        if (!document.getElementById('eventId').value) {
+            updateDefaultTimes(true);
+        }
+    };
 </script>
 
 {% endblock %}

@@ -118,9 +118,9 @@ def score(teacher, s1_sub, s2_sub, student_grade, teacher_age, student_pref_age1
     # 学年評価
     def calc_grade(grade, t_mid1, t_mid2, t_mid3):
         scores = [int(config.get("grade_match_teacher", 20)), int(config.get("grade_no_pref_teacher", 10)), int(config.get("grade_mismatch_teacher", 0))]
-        if grade == '中1' and t_mid1 == 3: return get_norm(scores[0], min(scores), max(scores), "weight_grade")
-        if grade == '中2' and t_mid2 == 3: return get_norm(scores[0], min(scores), max(scores), "weight_grade")
-        if grade == '中3' and t_mid3 == 3: return get_norm(scores[0], min(scores), max(scores), "weight_grade")
+        if grade == '中1' and t_mid1 == 1: return get_norm(scores[0], min(scores), max(scores), "weight_grade")
+        if grade == '中2' and t_mid2 == 1: return get_norm(scores[0], min(scores), max(scores), "weight_grade")
+        if grade == '中3' and t_mid3 == 1: return get_norm(scores[0], min(scores), max(scores), "weight_grade")
         return get_norm(scores[2], min(scores), max(scores), "weight_grade")
 
     details['学年評価'] = calc_grade(student_grade, teacher.pref_mid1_priority, teacher.pref_mid2_priority, teacher.pref_mid3_priority)
@@ -183,15 +183,20 @@ def simulated_annealing(teachers, students, attendances, config=None, prohibited
                      historical_data=(evaluation_map or {}).get((s.id, t.id)))
         return total
 
+    pair_scores = [
+        [get_pair_score(teachers[j], students[i]) for j in range(num_t)]
+        for i in range(num_s)
+    ]
+    prohibited_matches = prohibited_matches or set()
+
     # 1. 目的関数
     for i in range(num_s):
         for j in range(num_t):
             idx = get_idx(i, j)
-            if prohibited_matches and (students[i].id, teachers[j].id) in prohibited_matches:
+            if (students[i].id, teachers[j].id) in prohibited_matches:
                 qubo[(idx, idx)] = qubo.get((idx, idx), 0) + PROHIBITED_PENALTY
             else:
-                s_val = get_pair_score(teachers[j], students[i])
-                qubo[(idx, idx)] = qubo.get((idx, idx), 0) - s_val
+                qubo[(idx, idx)] = qubo.get((idx, idx), 0) - pair_scores[i][j]
 
     # 2. 制約1 (各生徒1講師)
     for i in range(num_s):
@@ -213,31 +218,106 @@ def simulated_annealing(teachers, students, attendances, config=None, prohibited
                 qubo[(idx_i, idx_k)] = qubo.get((idx_i, idx_k), 0) + 2 * LAMBDA_TEACHER_CONSTRAINT
 
     sampler = oj.SASampler()
-    response = sampler.sample_qubo(qubo, num_reads=int(config.get("num_reads", 100)))
+    response = sampler.sample_qubo(qubo, num_reads=int(config.get("num_reads", 1000)), num_sweeps=int(config.get("num_sweeps", 1000)))
     best_solution = response.first
     sample = best_solution.sample
     
     assigned_teachers = [None] * num_s
-    teacher_load = [0] * num_t
-    
-    # 簡易的な割り当て補修
-    for i in range(num_s):
-        for j in range(num_t):
-            if sample.get(get_idx(i, j), 0) == 1 and teacher_load[j] < target_counts[j]:
-                assigned_teachers[i] = j
-                teacher_load[j] += 1
-                break
-    
-    # 未割り当てを補填
-    for i in range(num_s):
-        if assigned_teachers[i] is None:
-            for j in range(num_t):
-                if teacher_load[j] < target_counts[j]:
-                    assigned_teachers[i] = j
-                    teacher_load[j] += 1
-                    break
-    
+    allowed_teachers = [
+        [j for j in range(num_t)
+         if (students[i].id, teachers[j].id) not in prohibited_matches]
+        for i in range(num_s)
+    ]
+
+    teacher_slots = [
+        [j] * target_counts[j] for j in range(num_t)
+    ]
+    slot_teachers = [j for slots in teacher_slots for j in slots]
+    slot_students = [None] * len(slot_teachers)
+
+    def place_student(student_idx, visited_slots, visited_students):
+        if student_idx in visited_students:
+            return False
+        visited_students.add(student_idx)
+        choices = sorted(
+            allowed_teachers[student_idx],
+            key=lambda j: (
+                sample.get(get_idx(student_idx, j), 0) != 1,
+                -pair_scores[student_idx][j],
+            ),
+        )
+        for teacher_idx in choices:
+            for slot_idx, slot_teacher in enumerate(slot_teachers):
+                if slot_teacher != teacher_idx or slot_idx in visited_slots:
+                    continue
+                visited_slots.add(slot_idx)
+                current_student = slot_students[slot_idx]
+                if (current_student is None
+                        or place_student(current_student, visited_slots, visited_students)):
+                    slot_students[slot_idx] = student_idx
+                    assigned_teachers[student_idx] = teacher_idx
+                    return True
+        return False
+
+    assignment_order = sorted(range(num_s), key=lambda i: len(allowed_teachers[i]))
+    for student_idx in assignment_order:
+        if not place_student(student_idx, set(), set()):
+            raise ValueError("制約を満たす講師割り当てがありません")
+
+    # Improve the repaired assignment with capacity-preserving student swaps.
+    while True:
+        best_swap = None
+        best_gain = 0.0
+        for i in range(num_s):
+            teacher_i = assigned_teachers[i]
+            for k in range(i + 1, num_s):
+                teacher_k = assigned_teachers[k]
+                if teacher_i == teacher_k:
+                    continue
+                if (teacher_k not in allowed_teachers[i]
+                        or teacher_i not in allowed_teachers[k]):
+                    continue
+                gain = (pair_scores[i][teacher_k] + pair_scores[k][teacher_i]
+                        - pair_scores[i][teacher_i] - pair_scores[k][teacher_k])
+                if gain > best_gain:
+                    best_swap = (i, k)
+                    best_gain = gain
+        if best_swap is None:
+            break
+        i, k = best_swap
+        assigned_teachers[i], assigned_teachers[k] = assigned_teachers[k], assigned_teachers[i]
+
     results = [(teachers[assigned_teachers[i]], students[i]) for i in range(num_s) if assigned_teachers[i] is not None]
-    return results, best_solution.energy
+    total_score = sum(pair_scores[i][assigned_teachers[i]] for i in range(num_s))
+    return results, -total_score
+
+
+def evaluate_assignment_energy(teachers, students, attendances, assignment_dict, config=None, prohibited_matches=None, evaluation_map=None):
+    config = config or DEFAULT_CONFIG
+    if not teachers or not students:
+        return 0.0
+
+    att_map = {a.user_id: a for a in attendances}
+
+    def get_pair_score(t, s):
+        att = att_map.get(s.user_id)
+        if not att: return 0
+        total, _ = score(t, att.subject1, att.subject2, s.grade, t.age, 
+                     s.pref_age1020_priority, s.pref_age3040_priority, s.pref_age50_priority,
+                     t.pref_gender, s.pref_gender, t.gender, s.gender, config, 
+                     historical_data=(evaluation_map or {}).get((s.id, t.id)))
+        return total
+
+    total_score = 0.0
+    for t_id_str, s_id_list in assignment_dict.items():
+        t = next((t for t in teachers if str(t.id) == str(t_id_str)), None)
+        if not t: continue
+        for s_id_str in s_id_list:
+            s = next((s for s in students if str(s.id) == str(s_id_str)), None)
+            if not s: continue
+            total_score += get_pair_score(t, s)
+
+    return -total_score
+
 
 

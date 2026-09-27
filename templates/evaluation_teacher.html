@@ -17,6 +17,9 @@
     .evaluation-table th {
         background-color: #f2f2f2;
     }
+    select:disabled {
+        background-color: #e9ecef;
+    }
 </style>
 
 <div class="header">
@@ -51,25 +54,32 @@
         <tbody>
             {% for item in data %}
             <tr>
-                <td>{{ item.student.name }}</td>
+                <td>
+                    {{ item.student.name }}
+                    {% if item.attendance and item.attendance.subject1 and item.attendance.subject2 %}
+                        {% set sub_map = {'数学': '数', '英語': '英', '国語': '国', '理科': '理', '社会': '社', 'なし': '-', '欠席': '-'} %}
+                        <small id="subjects_{{item.student.id}}">({{ sub_map.get(item.attendance.subject1, item.attendance.subject1) }}{{ sub_map.get(item.attendance.subject2, item.attendance.subject2) }})</small>
+                    {% endif %}
+                </td>
                 
                 <!-- 前半評価 -->
                 <td>
-                    <select name="teacher_{{ item.student.id }}_前半" style="width: 100%;">
+                    <select name="teacher_{{ item.student.id }}_前半" id="teacher_{{item.student.id}}_前半" style="width: 100%;" onchange="toggleEvaluation('{{item.student.id}}', '前半')">
+                        <option value="">なし</option>
                         {% for teacher in teachers %}
                         <option value="{{ teacher.id }}" {% if item.teachers['前半'] == teacher.id %}selected{% endif %}>{{ teacher.name }}</option>
                         {% endfor %}
                     </select>
                 </td>
                 <td>
-                    <select name="achievement_{{ item.student.id }}_{{ item.teachers['前半'] }}_前半" style="width: 100%;">
+                    <select name="achievement_{{ item.student.id }}_前半" id="achievement_{{item.student.id}}_前半" style="width: 100%;" {% if not item.teachers['前半'] %}disabled{% endif %}>
                         {% for i in range(4, 0, -1) %}
                         <option value="{{ i }}" {% if item.evals['前半'] and item.evals['前半'].achievement == i %}selected{% endif %}>{{ i }}</option>
                         {% endfor %}
                     </select>
                 </td>
                 <td>
-                    <select name="teachability_{{ item.student.id }}_{{ item.teachers['前半'] }}_前半" style="width: 100%;">
+                    <select name="teachability_{{ item.student.id }}_前半" id="teachability_{{item.student.id}}_前半" style="width: 100%;" {% if not item.teachers['前半'] %}disabled{% endif %}>
                         {% for i in range(4, 0, -1) %}
                         <option value="{{ i }}" {% if item.evals['前半'] and item.evals['前半'].teachability == i %}selected{% endif %}>{{ i }}</option>
                         {% endfor %}
@@ -78,21 +88,22 @@
 
                 <!-- 後半評価 -->
                 <td>
-                    <select name="teacher_{{ item.student.id }}_後半" style="width: 100%;">
+                    <select name="teacher_{{ item.student.id }}_後半" id="teacher_{{item.student.id}}_後半" style="width: 100%;" onchange="toggleEvaluation('{{item.student.id}}', '後半')">
+                        <option value="">なし</option>
                         {% for teacher in teachers %}
                         <option value="{{ teacher.id }}" {% if item.teachers['後半'] == teacher.id %}selected{% endif %}>{{ teacher.name }}</option>
                         {% endfor %}
                     </select>
                 </td>
                 <td>
-                    <select name="achievement_{{ item.student.id }}_{{ item.teachers['後半'] }}_後半" style="width: 100%;">
+                    <select name="achievement_{{ item.student.id }}_後半" id="achievement_{{item.student.id}}_後半" style="width: 100%;" {% if not item.teachers['後半'] %}disabled{% endif %}>
                         {% for i in range(4, 0, -1) %}
                         <option value="{{ i }}" {% if item.evals['後半'] and item.evals['後半'].achievement == i %}selected{% endif %}>{{ i }}</option>
                         {% endfor %}
                     </select>
                 </td>
                 <td>
-                    <select name="teachability_{{ item.student.id }}_{{ item.teachers['後半'] }}_後半" style="width: 100%;">
+                    <select name="teachability_{{ item.student.id }}_後半" id="teachability_{{item.student.id}}_後半" style="width: 100%;" {% if not item.teachers['後半'] %}disabled{% endif %}>
                         {% for i in range(4, 0, -1) %}
                         <option value="{{ i }}" {% if item.evals['後半'] and item.evals['後半'].teachability == i %}selected{% endif %}>{{ i }}</option>
                         {% endfor %}
@@ -104,4 +115,16 @@
     </table>
     <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">保存</button>
 </form>
+
+<script>
+    function toggleEvaluation(studentId, sub) {
+        const teacherSelect = document.getElementById(`teacher_${studentId}_${sub}`);
+        const achievementSelect = document.getElementById(`achievement_${studentId}_${sub}`);
+        const teachabilitySelect = document.getElementById(`teachability_${studentId}_${sub}`);
+        
+        const isSelected = teacherSelect.value !== "";
+        achievementSelect.disabled = !isSelected;
+        teachabilitySelect.disabled = !isSelected;
+    }
+</script>
 {% endblock %}

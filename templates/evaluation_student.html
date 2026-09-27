@@ -17,6 +17,9 @@
     .evaluation-table th {
         background-color: #f2f2f2;
     }
+    select:disabled {
+        background-color: #e9ecef;
+    }
 </style>
 
 <div class="header">
@@ -40,13 +43,13 @@
         <tr>
             <th style="width: 5%;">登録</th>
             <th style="width: 15%;">生徒名</th>
-            <th style="width: 11%;">前半担当講師</th>
-            <th style="width: 12%;">前半：進捗度</th>
-            <th style="width: 12%;">前半：しやすさ</th>
-            <th style="width: 11%;">後半担当講師</th>
-            <th style="width: 12%;">後半：進捗度</th>
-            <th style="width: 12%;">後半：しやすさ</th>
-            <th style="width: 7.5%;">操作</th>
+            <th style="width: 10%;">前半担当講師</th>
+            <th style="width: 10%;">前半：進捗度</th>
+            <th style="width: 10%;">前半：しやすさ</th>
+            <th style="width: 10%;">後半担当講師</th>
+            <th style="width: 10%;">後半：進捗度</th>
+            <th style="width: 10%;">後半：しやすさ</th>
+            <th style="width: 10%;">操作</th>
         </tr>
     </thead>
     <tbody>
@@ -63,19 +66,25 @@
                         &nbsp;
                     {% endif %}
                 </td>
-                <td>{{ item.student.name }}</td>
-                
+                <td>
+                    {{ item.student.name }}
+                    {% if item.attendance and item.attendance.subject1 and item.attendance.subject2 %}
+                        {% set sub_map = {'数学': '数', '英語': '英', '国語': '国', '理科': '理', '社会': '社', 'なし': '-', '欠席': '-'} %}
+                        <small>({{ sub_map.get(item.attendance.subject1, item.attendance.subject1) }}{{ sub_map.get(item.attendance.subject2, item.attendance.subject2) }})</small>
+                    {% endif %}
+                </td>
+
                 <!-- 前半評価 -->
                 <td>{{ item.teachers['前半'].name if item.teachers['前半'] else '-' }}</td>
                 <td>
-                    <select name="achievement_前半" style="width: 100%;">
+                    <select name="achievement_前半" id="achievement_{{item.student.id}}_前半" style="width: 100%;" {% if not item.teachers['前半'] %}disabled{% endif %}>
                         {% for i in range(4, 0, -1) %}
                         <option value="{{ i }}" {% if item.evals['前半'] and item.evals['前半'].achievement == i %}selected{% endif %}>{{ i }}</option>
                         {% endfor %}
                     </select>
                 </td>
                 <td>
-                    <select name="learnability_前半" style="width: 100%;">
+                    <select name="learnability_前半" id="learnability_{{item.student.id}}_前半" style="width: 100%;" {% if not item.teachers['前半'] %}disabled{% endif %}>
                         {% for i in range(4, 0, -1) %}
                         <option value="{{ i }}" {% if item.evals['前半'] and item.evals['前半'].learnability == i %}selected{% endif %}>{{ i }}</option>
                         {% endfor %}
@@ -85,24 +94,33 @@
                 <!-- 後半評価 -->
                 <td>{{ item.teachers['後半'].name if item.teachers['後半'] else '-' }}</td>
                 <td>
-                    <select name="achievement_後半" style="width: 100%;">
+                    <select name="achievement_後半" id="achievement_{{item.student.id}}_後半" style="width: 100%;" {% if not item.teachers['後半'] %}disabled{% endif %}>
                         {% for i in range(4, 0, -1) %}
                         <option value="{{ i }}" {% if item.evals['後半'] and item.evals['後半'].achievement == i %}selected{% endif %}>{{ i }}</option>
                         {% endfor %}
                     </select>
                 </td>
                 <td>
-                    <select name="learnability_後半" style="width: 100%;">
+                    <select name="learnability_後半" id="learnability_{{item.student.id}}_後半" style="width: 100%;" {% if not item.teachers['後半'] %}disabled{% endif %}>
                         {% for i in range(4, 0, -1) %}
                         <option value="{{ i }}" {% if item.evals['後半'] and item.evals['後半'].learnability == i %}selected{% endif %}>{{ i }}</option>
                         {% endfor %}
                     </select>
                 </td>
-                <td>
-                    <button type="submit" class="btn btn-primary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">保存</button>
+                <td style="display: flex; gap: 4px;">
+                    <button type="submit" class="btn btn-primary" style="padding: 0.2rem 0.4rem; font-size: 0.8rem;">保存</button>
+                    {% if item.evals['前半'] or item.evals['後半'] %}
+                    <button type="button" class="btn btn-outline btn-danger" style="padding: 0.2rem 0.4rem; font-size: 0.8rem;" 
+                            onclick="if(confirm('評価データを削除しますか？')) { 
+                                document.getElementById('deleteForm_{{item.student.id}}').submit(); 
+                            }">削除</button>
+                    {% endif %}
                 </td>
             </tr>
         </form>
+        {% if item.evals['前半'] or item.evals['後半'] %}
+        <form id="deleteForm_{{item.student.id}}" action="{{ url_for('evaluation_student_delete', student_id=item.student.id, sub='前半') if item.evals['前半'] else url_for('evaluation_student_delete', student_id=item.student.id, sub='後半') }}" method="POST" style="display:none;"></form>
+        {% endif %}
         {% endfor %}
     </tbody>
 </table>

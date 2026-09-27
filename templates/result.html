@@ -107,10 +107,10 @@
 
 <div class="energy-display">
     {% if session.latest_energy is not none %}
-    <div class="energy-card">今回結果 (Energy: {{ session.latest_energy|round(2) }} / 時刻: {{ session.get('last_run_time', '－') }})</div>
+    <div class="energy-card">今回結果 (合計スコア: {{ (-session.latest_energy)|round(1) }} / 時刻: {{ session.get('last_run_time', '－') }})</div>
     {% endif %}
     {% if best_energy is not none %}
-    <div class="energy-card">ベスト結果 (Energy: {{ best_energy|round(2) }})</div>
+    <div class="energy-card">ベスト結果 (合計スコア: {{ (-best_energy)|round(1) }})</div>
     {% endif %}
 </div>
 

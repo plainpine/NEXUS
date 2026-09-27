@@ -1,8 +1,19 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="header">
-    <h1>マッチング調整 {% if venue_name %}（会場: {{ venue_name }}）{% endif %}</h1>
+<div class="header" style="display: flex; align-items: center; justify-content: space-between;">
+    <div>
+        <h1>マッチング調整 {% if venue_name %}（会場: {{ venue_name }}）{% endif %}</h1>
+        {% if best_total_score is not none %}
+        <div style="font-size: 0.9rem; color: #666; margin-top: 0.25rem;">
+            ベスト結果の合計スコア: <strong>{{ "%.1f"|format(best_total_score) }}</strong>
+        </div>
+        {% endif %}
+    </div>
+    <div>
+        <button class="btn btn-secondary" onclick="calculateEnergy()">合計スコア計算</button>
+        <span id="energyResult" style="margin-left: 1rem; font-size: 1.1rem; font-weight: bold; color: #333;"></span>
+    </div>
 </div>
 
 <style>
@@ -33,7 +44,15 @@
     <div class="teacher-row" data-teacher-id="{{ t_id }}" style="border: 1px solid #ccc; padding: 1rem; display: flex; align-items: center; gap: 1rem;">
         <div style="min-width: 200px;">
             <div class="tooltip-wrapper">
-                <h3 style="margin: 0;">{{ t.name }}</h3>
+                <h3 style="margin: 0;">
+                    {{ t.name }}
+                    {% set att = data.teacher_attendance %}
+                    {% if att and (att.subject1 == '欠席' or att.subject2 == '欠席') %}
+                        <span style="font-size: 0.9rem; font-weight: normal; color: #d9534f;">
+                            ({% if att.subject1 == '欠席' and att.subject2 == '欠席' %}前欠・後欠{% elif att.subject1 == '欠席' %}前欠{% elif att.subject2 == '欠席' %}後欠{% endif %})
+                        </span>
+                    {% endif %}
+                </h3>
                 <span class="tooltip">希望: 
                     {% if t.pref_mid1_priority == 1 %}中12{% elif t.pref_mid3_priority == 1 %}中3{% else %}学年不問{% endif %}
                     / {{ t.pref_gender if t.pref_gender != '不問' else '性別不問' }}
@@ -75,7 +94,7 @@
             {% for item in data.adj_students %}
             {% set student = item.student %}
             <div class="student-card" draggable="true" ondragstart="drag(event)" data-student-id="{{ student.id }}" style="background: #e9ecef; padding: 0.5rem; margin: 0.25rem; display: inline-block; border-radius: 4px;">
-                {{ student.name }}
+                {{ student.name }} <span class="student-score" data-student-id="{{ student.id }}" style="color: #007bff; font-weight: bold; font-size: 0.85rem; margin-left: 4px;"></span>
             </div>
             {% endfor %}
         </div>
@@ -107,6 +126,44 @@ function drop(ev) {
     
     var studentCard = document.querySelector(`[data-student-id="${studentId}"]`);
     target.appendChild(studentCard);
+}
+
+function calculateEnergy() {
+    var data = {};
+    document.querySelectorAll('.teacher-row').forEach(row => {
+        var t_id = row.getAttribute('data-teacher-id');
+        data[t_id] = [];
+        row.querySelectorAll('.student-card').forEach(card => {
+            data[t_id].push(card.getAttribute('data-student-id'));
+        });
+    });
+
+    var payload = {
+        event_id: "{{ event_id }}",
+        data: data
+    };
+
+    fetch('/matching/calculate_adjustment', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    }).then(response => response.json()).then(result => {
+        if (result.status === 'success') {
+            document.getElementById('energyResult').innerText = `合計スコア: ${result.total_score.toFixed(1)}`;
+            for (var s_id in result.scores) {
+                document.querySelectorAll(`.student-score[data-student-id="${s_id}"]`).forEach(span => {
+                    span.innerText = `(${result.scores[s_id].toFixed(1)})`;
+                });
+            }
+        } else {
+            alert('計算に失敗しました');
+        }
+    }).catch(err => {
+        console.error(err);
+        alert('計算中にエラーが発生しました');
+    });
 }
 
 function saveAdjustments() {

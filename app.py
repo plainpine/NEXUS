@@ -4,7 +4,7 @@ from functools import wraps
 from datetime import datetime
 from sqlalchemy import inspect, text
 from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation, ProhibitedMatch, BestMatch
-from matching import simulated_annealing, evaluation_rating_to_score, score, get_subject_proficiency, DEFAULT_CONFIG
+from matching import simulated_annealing, evaluation_rating_to_score, score, get_subject_proficiency, DEFAULT_CONFIG, evaluate_assignment_energy
 import os
 
 app = Flask(__name__)
@@ -683,12 +683,80 @@ def teacher_attend_save_individual():
     else:
         # イベント未選択の場合は Teacher レコードを更新 (従来通り)
         teacher.attend = is_attend
-        teacher.subject1 = request.form.get('sub1') if is_attend else '欠席'
-        teacher.subject2 = request.form.get('sub2') if is_attend else '欠席'
+
+@app.route('/teacher/attend_save_all', methods=['POST'])
+@login_required
+@organization_required
+def teacher_attend_save_all():
+    event_id = request.form.get('event_id')
+    teacher_ids = request.form.getlist('teacher_ids')
+    
+    event = db.session.get(Event, int(event_id)) if event_id else None
+    
+    for t_id in teacher_ids:
+        teacher = db.session.get(Teacher, t_id)
+        is_attend = (request.form.get(f'attend_{t_id}') == 'true')
+        
+        if event:
+            attendance = EventAttendance.query.filter_by(event_id=event.id, user_id=teacher.user_id).first()
+            if not attendance:
+                attendance = EventAttendance(event_id=event.id, user_id=teacher.user_id)
+                db.session.add(attendance)
+            
+            attendance.attend = is_attend
+            if event.name == '学習会':
+                attendance.venue_id = int(request.form.get(f'venue_id_{t_id}')) if request.form.get(f'venue_id_{t_id}') else None
+                attendance.subject1 = request.form.get(f'sub1_{t_id}') if is_attend else '欠席'
+                attendance.subject2 = request.form.get(f'sub2_{t_id}') if is_attend else '欠席'
+            else:
+                attendance.venue_id = None
+                attendance.subject1 = '欠席'
+                attendance.subject2 = '欠席'
+            attendance.updated_by = 'admin'
+        else:
+            teacher.attend = is_attend
             
     db.session.commit()
-    flash('出席状況を保存しました')
-    return redirect(url_for('teachers'))
+    flash('講師の情報を一括保存しました。', 'success')
+    return redirect(request.referrer)
+
+@app.route('/student/attend_save_all', methods=['POST'])
+@login_required
+@organization_required
+def student_attend_save_all():
+    event_id = request.form.get('event_id')
+    student_ids = request.form.getlist('student_ids')
+    
+    event = db.session.get(Event, int(event_id)) if event_id else None
+    
+    for s_id in student_ids:
+        student = db.session.get(Student, s_id)
+        is_attend = (request.form.get(f'attend_{s_id}') == 'true')
+        
+        if event:
+            attendance = EventAttendance.query.filter_by(event_id=event.id, user_id=student.user_id).first()
+            if not attendance:
+                attendance = EventAttendance(event_id=event.id, user_id=student.user_id)
+                db.session.add(attendance)
+            
+            attendance.attend = is_attend
+            if event.name == '学習会':
+                attendance.venue_id = int(request.form.get(f'venue_id_{s_id}')) if request.form.get(f'venue_id_{s_id}') else None
+                attendance.subject1 = request.form.get(f'sub1_{s_id}') if is_attend else 'なし'
+                attendance.subject2 = request.form.get(f'sub2_{s_id}') if is_attend else 'なし'
+            else:
+                attendance.venue_id = None
+                attendance.subject1 = 'なし'
+                attendance.subject2 = 'なし'
+            attendance.updated_by = 'admin'
+        else:
+            student.attend = is_attend
+            student.subject1 = request.form.get(f'sub1_{s_id}') if is_attend else 'なし'
+            student.subject2 = request.form.get(f'sub2_{s_id}') if is_attend else 'なし'
+            
+    db.session.commit()
+    flash('生徒の情報を一括保存しました。', 'success')
+    return redirect(request.referrer)
 
 # 講師の出席切り替え (個別用)
 @app.route('/teacher/toggle/<int:id>')
@@ -1079,7 +1147,7 @@ def event_save():
     db.session.commit()
     
     # イベントの状態が変更された場合、セッションの選択中イベント情報を更新
-    if session.get('selected_event_id') == int(id):
+    if id and session.get('selected_event_id') == int(id):
         event = db.session.get(Event, id)
         session['selected_event_name'] = event.name
         session['selected_event_status'] = event.status
@@ -1257,8 +1325,10 @@ def matching_adjustment():
     # データ構造の構築
     adj_map = {}
     for t in teachers:
+        t_attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=t.user_id).first()
         adj_map[t.id] = {
             'teacher': t,
+            'teacher_attendance': t_attendance,
             'fixed_students': [],
             'adj_students': []
         }
@@ -1273,7 +1343,10 @@ def matching_adjustment():
         attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=student.user_id).first()
         adj_map[m.teacher_id]['adj_students'].append({'student': student, 'attendance': attendance})
         
-    return render_template('matching_adjustment.html', adj_map=adj_map, event_id=event_id, venue_name=venue_name)
+    best_match_record = BestMatch.query.filter_by(event_id=event_id).first()
+    best_total_score = (-best_match_record.best_energy) if best_match_record else None
+
+    return render_template('matching_adjustment.html', adj_map=adj_map, event_id=event_id, venue_name=venue_name, best_total_score=best_total_score)
 
 @app.route('/matching/save_adjustment', methods=['POST'])
 @login_required
@@ -1313,6 +1386,85 @@ def save_adjustment():
             db.session.add(adj)
     db.session.commit()
     return jsonify({"status": "success"})
+
+@app.route('/matching/calculate_adjustment', methods=['POST'])
+@login_required
+@admin_required
+def calculate_adjustment():
+    payload = request.json
+    event_id = payload.get('event_id')
+    data = payload.get('data')
+    org_id = session.get('organization_id')
+    
+    configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
+    
+    target_event = db.session.get(Event, int(event_id))
+    if not target_event:
+        return jsonify({"status": "error", "message": "Event not found"}), 404
+
+    evaluation_map = {}
+    completed_statuses = ['実施後', '完了']
+    completed_events = Event.query.filter(
+        Event.organization_id == org_id,
+        Event.status.in_(completed_statuses),
+        Event.date < target_event.date,
+    ).with_entities(Event.id).subquery()
+
+    def add_eval_to_map(eval_list, achievement_attr, quality_attr, map_key_ach, map_key_qual):
+        for e in eval_list:
+            event = db.session.get(Event, e.event_id)
+            if not event: continue
+            days_ago = (datetime.now() - event.date).days
+            weight = 1.0 + (0.1 * max(0, 100 - days_ago // 7))
+            ach_score = evaluation_rating_to_score(getattr(e, achievement_attr))
+            qual_score = evaluation_rating_to_score(getattr(e, quality_attr))
+            pair = (e.student_id, e.teacher_id)
+            if pair not in evaluation_map:
+                evaluation_map[pair] = {'t_ach': [0,0], 't_tea': [0,0], 's_ach': [0,0], 's_lea': [0,0]}
+            evaluation_map[pair][map_key_ach][0] += ach_score * weight
+            evaluation_map[pair][map_key_ach][1] += weight
+            evaluation_map[pair][map_key_qual][0] += qual_score * weight
+            evaluation_map[pair][map_key_qual][1] += weight
+
+    teacher_evaluations = TeacherEvaluation.query.filter(TeacherEvaluation.event_id.in_(completed_events)).all()
+    add_eval_to_map(teacher_evaluations, 'achievement', 'teachability', 't_ach', 't_tea')
+    student_evaluations = StudentEvaluation.query.filter(StudentEvaluation.event_id.in_(completed_events)).all()
+    add_eval_to_map(student_evaluations, 'achievement', 'learnability', 's_ach', 's_lea')
+    
+    final_evaluation_map = {}
+    for pair, d in evaluation_map.items():
+        final_evaluation_map[pair] = {k: (v[0] / v[1] if v[1] > 0 else 0) for k, v in d.items()}
+
+    student_scores = {}
+    total_score = 0.0
+
+    for t_id_str, s_id_list in data.items():
+        t = db.session.get(Teacher, int(t_id_str))
+        if not t: continue
+        for s_id_str in s_id_list:
+            s_id = int(s_id_str)
+            s = db.session.get(Student, s_id)
+            if not s: continue
+            attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=s.user_id).first()
+            att_sub1 = attendance.subject1 if attendance else 'なし'
+            att_sub2 = attendance.subject2 if attendance else 'なし'
+            
+            pair_score, details = score(
+                t, att_sub1, att_sub2, s.grade, t.age,
+                s.pref_age1020_priority, s.pref_age3040_priority, s.pref_age50_priority,
+                t.pref_gender, s.pref_gender, t.gender, s.gender,
+                configs, historical_data=final_evaluation_map.get((s.id, t.id))
+            )
+            student_scores[s_id] = round(pair_score, 2)
+            total_score += pair_score
+
+    energy = round(-total_score, 2)
+    return jsonify({
+        "status": "success",
+        "energy": energy,
+        "total_score": round(total_score, 2),
+        "scores": student_scores
+    })
 
 
 from flask import send_file
@@ -1688,7 +1840,16 @@ def post_study_session():
     attendances = EventAttendance.query.filter(EventAttendance.user_id == user.id, EventAttendance.event_id.in_([e.id for e in events])).all()
     attendance_map = {a.event_id: a for a in attendances}
     
-    return render_template('post_study_session.html', events=events, attendance_map=attendance_map, is_teacher=(user.teacher_record is not None))
+    evaluations = {}
+    if user.student_record:
+        student_id = user.student_record.id
+        evals = StudentEvaluation.query.filter_by(student_id=student_id).all()
+        for e in evals:
+            if e.event_id not in evaluations:
+                evaluations[e.event_id] = {}
+            evaluations[e.event_id][e.subject_type] = e
+            
+    return render_template('post_study_session.html', events=events, attendance_map=attendance_map, is_teacher=(user.teacher_record is not None), evaluations=evaluations)
 
 # 学習会実施データ保存
 @app.route('/post_study_session/save', methods=['POST'])
@@ -1741,7 +1902,23 @@ def settings():
     saved = request.args.get('saved', False)
     return render_template('settings.html', configs=configs, saved=saved)
 
-# 評価関連
+# 生徒の感想データの削除
+@app.route('/evaluation/student/delete/<int:student_id>/<string:sub>', methods=['POST'])
+@login_required
+@admin_required
+def evaluation_student_delete(student_id, sub):
+    event_id = session.get('selected_event_id')
+    
+    # 該当する講師IDをTeacherEvaluationから取得
+    t_eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=student_id, subject_type=sub).first()
+    if t_eval:
+        eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=t_eval.teacher_id, student_id=student_id, subject_type=sub).first()
+        if eval:
+            db.session.delete(eval)
+            db.session.commit()
+            flash(f'生徒ID: {student_id} の{sub}の評価を削除しました')
+    
+    return redirect(url_for('evaluation_student'))
 @app.route('/evaluation/teacher', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -1764,48 +1941,100 @@ def evaluation_teacher():
         matches = MatchResult.query.filter_by(event_id=event_id).all()
         
     if request.method == 'POST':
+        # 生徒ごとの更新をまとめるため、キーを整理する
+        # name=achievement_studentId_sub -> {'studentId': {'sub': {'ach': val, 'tea': val, 'tea_id': val}}}
+        form_data = {}
         for key, value in request.form.items():
-            if key.startswith('achievement_') or key.startswith('teachability_'):
-                # achievement_studentId_teacherId_sub
-                _, student_id, teacher_id, sub = key.split('_')
+            if key.startswith('teacher_') or key.startswith('achievement_') or key.startswith('teachability_'):
+                parts = key.split('_')
+                if len(parts) < 3: continue
+                # key は teacher_studentId_sub または achievement_studentId_sub
+                _, student_id, sub = parts[0], parts[1], parts[2]
                 
-                # 新しい値をPOSTデータから取得 (講師変更に対応)
-                selected_teacher_id = int(request.form.get(f'teacher_{student_id}_{sub}'))
+                if student_id not in form_data: form_data[student_id] = {}
+                if sub not in form_data[student_id]: form_data[student_id][sub] = {}
                 
-                eval = TeacherEvaluation.query.filter_by(event_id=event_id, teacher_id=selected_teacher_id, student_id=student_id, subject_type=sub).first()
+                if key.startswith('teacher_'):
+                    form_data[student_id][sub]['tea_id'] = value
+                elif key.startswith('achievement_'):
+                    form_data[student_id][sub]['ach'] = int(value)
+                elif key.startswith('teachability_'):
+                    form_data[student_id][sub]['tea'] = int(value)
+        
+        for student_id, subs in form_data.items():
+            for sub, data in subs.items():
+                teacher_id_str = data.get('tea_id')
+                
+                # 既存の評価レコードを生徒と科目で特定
+                eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=student_id, subject_type=sub).first()
+                
+                # 講師が「なし」の場合
+                if not teacher_id_str:
+                    if eval:
+                        db.session.delete(eval)
+                        # 感想評価も削除
+                        student_eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=eval.teacher_id, student_id=student_id, subject_type=sub).first()
+                        if student_eval:
+                            db.session.delete(student_eval)
+                    continue
+                
+                selected_teacher_id = int(teacher_id_str)
+                
+                # レコードがない場合は新規作成
                 if not eval:
                     eval = TeacherEvaluation(event_id=event_id, teacher_id=selected_teacher_id, student_id=student_id, subject_type=sub)
                     db.session.add(eval)
-                
-                if key.startswith('achievement_'):
-                    eval.achievement = int(value)
                 else:
-                    eval.teachability = int(value)
+                    # 講師変更時は生徒の感想評価レコードの講師IDを更新
+                    if eval.teacher_id != selected_teacher_id:
+                        student_eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=eval.teacher_id, student_id=student_id, subject_type=sub).first()
+                        if student_eval:
+                            student_eval.teacher_id = selected_teacher_id
+                        eval.teacher_id = selected_teacher_id
+                
+                # 値を更新
+                eval.achievement = data.get('ach', eval.achievement)
+                eval.teachability = data.get('tea', eval.teachability)
+        
         db.session.commit()
         flash('評価を保存しました')
         return redirect(url_for('evaluation_teacher'))
 
     # 生徒単位でデータを集約
     data_map = {}
+    
+    # 出欠情報を取得
+    attendances = EventAttendance.query.filter_by(event_id=event_id).all()
+    attendance_map = {a.user_id: a for a in attendances}
+    
     for m in matches:
         if m.student_id not in data_map:
+            student = db.session.get(Student, m.student_id)
+            attendance = attendance_map.get(student.user_id)
+            
+            # 科目設定に基づいて初期講師IDを設定
+            t1 = m.teacher_id if (attendance and attendance.subject1 not in ['なし', '欠席']) else None
+            t2 = m.teacher_id if (attendance and attendance.subject2 not in ['なし', '欠席']) else None
+            
             data_map[m.student_id] = {
-                'student': db.session.get(Student, m.student_id),
+                'student': student,
+                'attendance': attendance,
                 'evals': {'前半': None, '後半': None},
-                'teachers': {'前半': m.teacher_id, '後半': m.teacher_id} # デフォルト
+                'teachers': {'前半': t1, '後半': t2}
             }
         
         # 評価取得
         for sub in ['前半', '後半']:
-            eval = TeacherEvaluation.query.filter_by(event_id=event_id, teacher_id=m.teacher_id, student_id=m.student_id, subject_type=sub).first()
+            eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=m.student_id, subject_type=sub).first()
             if eval:
                 data_map[m.student_id]['evals'][sub] = eval
+                # 評価レコードが存在すれば、講師IDを上書き
                 data_map[m.student_id]['teachers'][sub] = eval.teacher_id
 
     # ソート用にリスト化
     data = list(data_map.values())
-    # 前半担当講師の氏名でソート
-    data.sort(key=lambda x: db.session.get(Teacher, x['teachers']['前半']).name if x['teachers']['前半'] else "")
+    # ユーザID順でソート（関連するUserモデルのusername）
+    data.sort(key=lambda x: x['student'].user.username if x['student'].user else "")
         
     return render_template('evaluation_teacher.html', data=data, teachers=participating_teachers, 
                            achievement_map=achievement_map, teachability_map=teachability_map)
@@ -1834,17 +2063,36 @@ def evaluation_student():
         for sub in ['前半', '後半']:
             # 該当する講師IDをTeacherEvaluationから取得
             t_eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=student_id, subject_type=sub).first()
-            teacher_id = t_eval.teacher_id if t_eval else None
+            teacher_id = None
+            if t_eval:
+                teacher_id = t_eval.teacher_id
+            else:
+                student = db.session.get(Student, student_id)
+                attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=student.user_id).first() if student else None
+                match = AdjustedMatch.query.filter_by(event_id=event_id, student_id=student_id).first()
+                if not match:
+                    match = MatchResult.query.filter_by(event_id=event_id, student_id=student_id).first()
+                if match and attendance:
+                    if sub == '前半' and attendance.subject1 not in ['なし', '欠席']:
+                        teacher_id = match.teacher_id
+                    elif sub == '後半' and attendance.subject2 not in ['なし', '欠席']:
+                        teacher_id = match.teacher_id
             
-            if teacher_id:
-                eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub).first()
-                if not eval:
-                    eval = StudentEvaluation(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub)
-                    db.session.add(eval)
-                
-                eval.achievement = int(request.form.get(f'achievement_{sub}'))
-                eval.learnability = int(request.form.get(f'learnability_{sub}'))
-                eval.registered_by = 'admin' # 管理者による保存
+            # 講師が「なし」の場合、評価レコードがあれば削除
+            if not teacher_id:
+                evals = StudentEvaluation.query.filter_by(event_id=event_id, student_id=student_id, subject_type=sub).all()
+                for eval in evals:
+                    db.session.delete(eval)
+                continue
+            
+            eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub).first()
+            if not eval:
+                eval = StudentEvaluation(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub)
+                db.session.add(eval)
+            
+            eval.achievement = int(request.form.get(f'achievement_{sub}'))
+            eval.learnability = int(request.form.get(f'learnability_{sub}'))
+            eval.registered_by = 'admin' # 管理者による保存
         
         db.session.commit()
         flash(f'生徒ID: {student_id} の評価を保存しました')
@@ -1852,12 +2100,26 @@ def evaluation_student():
 
     # 生徒単位でデータを集約
     data_map = {}
+    
+    # イベントの出欠情報を取得
+    attendances = EventAttendance.query.filter_by(event_id=event_id).all()
+    attendance_map = {a.user_id: a for a in attendances}
+    
     for m in matches:
         if m.student_id not in data_map:
+            student = db.session.get(Student, m.student_id)
+            attendance = attendance_map.get(student.user_id)
+            
+            # 科目設定に基づいて初期講師IDを設定
+            t1_id = m.teacher_id if (attendance and attendance.subject1 not in ['なし', '欠席']) else None
+            t2_id = m.teacher_id if (attendance and attendance.subject2 not in ['なし', '欠席']) else None
+            
             data_map[m.student_id] = {
-                'student': db.session.get(Student, m.student_id),
+                'student': student,
+                'attendance': attendance,
                 'evals': {'前半': None, '後半': None},
-                'teachers': {'前半': None, '後半': None},
+                'teachers': {'前半': db.session.get(Teacher, t1_id) if t1_id else None, 
+                             '後半': db.session.get(Teacher, t2_id) if t2_id else None},
                 'registered_by': None
             }
         
@@ -1865,14 +2127,19 @@ def evaluation_student():
         for sub in ['前半', '後半']:
             t_eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=m.student_id, subject_type=sub).first()
             if t_eval:
-                data_map[m.student_id]['teachers'][sub] = db.session.get(Teacher, t_eval.teacher_id)
+                teacher_obj = db.session.get(Teacher, t_eval.teacher_id)
+                data_map[m.student_id]['teachers'][sub] = teacher_obj
                 eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=t_eval.teacher_id, student_id=m.student_id, subject_type=sub).first()
                 data_map[m.student_id]['evals'][sub] = eval
                 if eval and eval.registered_by:
                     data_map[m.student_id]['registered_by'] = eval.registered_by
             else:
-                # データがない場合はマッチング結果から取得
-                data_map[m.student_id]['teachers'][sub] = db.session.get(Teacher, m.teacher_id)
+                teacher_obj = data_map[m.student_id]['teachers'][sub]
+                if teacher_obj:
+                    eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=teacher_obj.id, student_id=m.student_id, subject_type=sub).first()
+                    data_map[m.student_id]['evals'][sub] = eval
+                    if eval and eval.registered_by:
+                        data_map[m.student_id]['registered_by'] = eval.registered_by
 
     # ソート用にリスト化
     data = list(data_map.values())
