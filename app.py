@@ -1841,6 +1841,7 @@ def post_study_session():
     attendance_map = {a.event_id: a for a in attendances}
     
     evaluations = {}
+    teacher_enabled_map = {}
     if user.student_record:
         student_id = user.student_record.id
         evals = StudentEvaluation.query.filter_by(student_id=student_id).all()
@@ -1848,34 +1849,59 @@ def post_study_session():
             if e.event_id not in evaluations:
                 evaluations[e.event_id] = {}
             evaluations[e.event_id][e.subject_type] = e
+
+        for event in events:
+            teacher_enabled_map[event.id] = {'前半': False, '後半': False}
+            attendance = attendance_map.get(event.id)
+            match = AdjustedMatch.query.filter_by(event_id=event.id, student_id=student_id).first()
+            if not match:
+                match = MatchResult.query.filter_by(event_id=event.id, student_id=student_id).first()
             
-    return render_template('post_study_session.html', events=events, attendance_map=attendance_map, is_teacher=(user.teacher_record is not None), evaluations=evaluations)
+            for sub in ['前半', '後半']:
+                t_eval = TeacherEvaluation.query.filter_by(event_id=event.id, student_id=student_id, subject_type=sub).first()
+                if t_eval:
+                    teacher_enabled_map[event.id][sub] = True
+                else:
+                    if match and attendance:
+                        if sub == '前半' and attendance.subject1 not in ['なし', '欠席']:
+                            teacher_enabled_map[event.id][sub] = True
+                        elif sub == '後半' and attendance.subject2 not in ['なし', '欠席']:
+                            teacher_enabled_map[event.id][sub] = True
+            
+    return render_template('post_study_session.html', events=events, attendance_map=attendance_map, is_teacher=(user.teacher_record is not None), evaluations=evaluations, teacher_enabled_map=teacher_enabled_map)
 
 # 学習会実施データ保存
 @app.route('/post_study_session/save', methods=['POST'])
 @login_required
 def post_study_session_save():
     event_id = request.form.get('event_id')
-    student_id = Student.query.filter_by(user_id=session['user_id']).first().id
+    user_id = session['user_id']
+    student = Student.query.filter_by(user_id=user_id).first()
+    student_id = student.id if student else None
     
-    # 前半・後半それぞれの評価を保存
-    for sub in ['前半', '後半']:
-        achievement = request.form.get(f'achievement_{sub}')
-        learnability = request.form.get(f'learnability_{sub}')
-        
-        # 該当する講師IDをTeacherEvaluationから取得
-        t_eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=student_id, subject_type=sub).first()
-        teacher_id = t_eval.teacher_id if t_eval else None
-        
-        if teacher_id:
-            eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub).first()
-            if not eval:
-                eval = StudentEvaluation(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub)
-                db.session.add(eval)
+    if student_id:
+        # 前半・後半それぞれの評価を保存
+        for sub in ['前半', '後半']:
+            achievement = request.form.get(f'achievement_{sub}')
+            learnability = request.form.get(f'learnability_{sub}')
             
-            eval.achievement = int(achievement)
-            eval.learnability = int(learnability)
-            eval.registered_by = 'student' # 生徒による登録
+            # 該当する講師IDをTeacherEvaluationから取得
+            t_eval = TeacherEvaluation.query.filter_by(event_id=event_id, student_id=student_id, subject_type=sub).first()
+            teacher_id = t_eval.teacher_id if t_eval else None
+            
+            if teacher_id:
+                eval = StudentEvaluation.query.filter_by(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub).first()
+                if not eval:
+                    eval = StudentEvaluation(event_id=event_id, teacher_id=teacher_id, student_id=student_id, subject_type=sub)
+                    db.session.add(eval)
+                
+                eval.achievement = int(achievement)
+                eval.learnability = int(learnability)
+                eval.registered_by = 'student' # 生徒による登録
+        
+        attendance = EventAttendance.query.filter_by(event_id=event_id, user_id=user_id).first()
+        if attendance:
+            attendance.updated_by = 'user'
     
     db.session.commit()
     flash('学習会実績を保存しました')
