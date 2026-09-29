@@ -307,6 +307,7 @@ def login():
             
             if external_success:
                 session['user_id'] = user.id
+                session['is_external_auth'] = True
                 if user.is_admin:
                     if user.organization:
                         session['organization_id'] = user.organization_id
@@ -323,6 +324,7 @@ def login():
             # 一致していたらログインさせる。異なっていたら、ログインエラーにする。
             if user.check_password(password):
                 session['user_id'] = user.id
+                session['is_external_auth'] = False
                 if user.is_admin:
                     if user.organization:
                         session['organization_id'] = user.organization_id
@@ -698,7 +700,7 @@ def teacher_edit(id):
         if username and current_user.is_admin: # 管理者のみユーザ名変更可
             if teacher.user:
                 teacher.user.username = username
-        if password:
+        if password and not session.get('is_external_auth'):
             teacher.user.set_password(password)
                 
         db.session.commit()
@@ -708,7 +710,8 @@ def teacher_edit(id):
             return redirect(url_for('teacher_dashboard'))
     
     venues = Venue.query.filter_by(organization_id=session.get('organization_id') or teacher.organization_id).all()
-    return render_template('teacher_edit.html', teacher=teacher, venues=venues, is_admin=current_user.is_admin)
+    is_external_auth = session.get('is_external_auth', False)
+    return render_template('teacher_edit.html', teacher=teacher, venues=venues, is_admin=current_user.is_admin, is_external_auth=is_external_auth)
 
 # 講師の出席一括更新
 @app.route('/teacher/attend_update', methods=['POST'])
@@ -990,7 +993,7 @@ def student_edit(id):
         if username and current_user.is_admin: # 管理者のみユーザ名変更可
             if student.user:
                 student.user.username = username
-        if password:
+        if password and not session.get('is_external_auth'):
             student.user.set_password(password)
                 
         db.session.commit()
@@ -1000,7 +1003,8 @@ def student_edit(id):
             return redirect(url_for('student_dashboard'))
     
     venues = Venue.query.filter_by(organization_id=session.get('organization_id') or student.organization_id).all()
-    return render_template('student_edit.html', student=student, venues=venues, is_admin=current_user.is_admin)
+    is_external_auth = session.get('is_external_auth', False)
+    return render_template('student_edit.html', student=student, venues=venues, is_admin=current_user.is_admin, is_external_auth=is_external_auth)
 
 # 生徒の個別出席更新
 @app.route('/student/attend_save_individual', methods=['POST'])
