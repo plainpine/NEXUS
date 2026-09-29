@@ -17,6 +17,13 @@
             {{ request.args.get('error') }}
         </div>
         {% endif %}
+        {#
+        {% if request.args.get('debug') %}
+        <div style="background: #f8d7da; color: #721c24; padding: 10px; margin-bottom: 10px; font-size: 0.85rem; word-break: break-all; border: 1px solid #f5c6cb; border-radius: 4px; text-align: left;">
+            <strong>[API Debug]</strong> {{ request.args.get('debug') }}
+        </div>
+        {% endif %}
+        #}
         <input type="text" name="username" placeholder="ユーザID" required style="width: 100%; margin-bottom: 10px;">
         <input type="password" name="password" placeholder="パスワード" required style="width: 100%; margin-bottom: 10px;">
         <button type="submit" class="btn btn-primary" style="width: 100%;">ログイン</button>

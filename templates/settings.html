@@ -39,6 +39,16 @@
                 </select>
             </label>
         </div>
+
+        <h3>外部認証API設定</h3>
+        <div style="margin-bottom: 1rem;">
+            <div style="margin-bottom: 0.5rem;">
+                <label>API URL: <input type="text" name="external_auth_url" value="{{ configs.get('external_auth_url', '') }}" placeholder="http://127.0.0.1:5000/api/auth/verify" style="width: 350px;"></label>
+            </div>
+            <div>
+                <label>APIキー: <input type="password" name="external_auth_api_key" value="{{ configs.get('external_auth_api_key', '') }}" placeholder="APIキー" style="width: 350px;"></label>
+            </div>
+        </div>
         <button type="submit" class="btn btn-primary">保存</button>
     </form>
 </div>

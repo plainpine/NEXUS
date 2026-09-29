@@ -6,15 +6,33 @@ from sqlalchemy import inspect, text
 from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation, ProhibitedMatch, BestMatch
 from matching import simulated_annealing, evaluation_rating_to_score, score, get_subject_proficiency, DEFAULT_CONFIG, evaluate_assignment_energy
 import os
+import requests
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('NEXUS_DATABASE_URI', 'sqlite:///database.db')
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"connect_args": {"timeout": 30}}
 app.config['SECRET_KEY'] = "secret"
 
 # 初期化
 db.init_app(app)
 
+@app.after_request
+def add_header(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 with app.app_context():
+    from sqlalchemy import event
+    @event.listens_for(db.engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
+
+    db.create_all()
     inspector = inspect(db.engine)
     if 'match_result' in inspector.get_table_names():
         columns = {column['name'] for column in inspector.get_columns('match_result')}
@@ -171,8 +189,6 @@ def students_import():
             name=item['name'],
             grade=item.get('grade'),
             gender=item.get('gender'),
-            subject1=item.get('subject1', 'なし'),
-            subject2=item.get('subject2', 'なし'),
             pref_gender=item.get('pref_gender'),
             pref_age1020_priority=item.get('pref_age1020_priority', 2),
             pref_age3040_priority=item.get('pref_age3040_priority', 2),
@@ -245,29 +261,87 @@ def admin_required(f):
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        user = User.query.filter_by(username=request.form['username']).first()
-        if user and user.check_password(request.form['password']):
-            session['user_id'] = user.id
-            if user.is_admin:
-                # 管理者の場合、セッションに組織情報をセット
-                if user.organization:
-                    session['organization_id'] = user.organization_id
-                    session['org_name'] = user.organization.name
-                return redirect(url_for('event_select'))
-            elif user.student_record:
-                return redirect(url_for('student_dashboard'))
-            elif user.teacher_record:
-                return redirect(url_for('teacher_dashboard'))
-            else:
-                # どの役割でもない場合、デフォルトの画面へ
-                return redirect(url_for('login'))
+        username = request.form['username']
+        password = request.form['password']
+        debug_info = None
+        
+        # 1. ログイン時に入力されたユーザIDが本システムに登録されていることを確認する
+        user = User.query.filter_by(username=username).first()
+        if user:
+            # 2. 1.の確認ができたら、入力されたユーザID・パスワードで、このAPIにアクセスし、認証が成功するか確認する。
+            # 認証が成功していたら、ログインさせる。パスワードが異なったら、次にすすむ。
+            org_id = user.organization_id
+            configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()} if org_id else {}
+            
+            api_url = configs.get('external_auth_url') or os.environ.get('MQUEST_AUTH_API_URL') or os.environ.get('MQUEST_API_URL')
+            api_key = configs.get('external_auth_api_key') or os.environ.get('MQUEST_API_KEY')
+            
+            external_success = False
+            debug_info = None
+            if api_url:
+                try:
+                    headers = {
+                        "Content-Type": "application/json"
+                    }
+                    if api_key:
+                        headers["X-MQuest-API-Key"] = api_key
+                    
+                    payload = {
+                        "username": username,
+                        "password": password
+                    }
+                    response = requests.post(api_url, json=payload, headers=headers, timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get('success'):
+                            external_success = True
+                        else:
+                            # debug_info = f"API認証失敗 (URL: {api_url}, Status: 200, Response: {response.text[:200]})"
+                            pass
+                    else:
+                        # debug_info = f"API認証失敗 (URL: {api_url}, Status: {response.status_code}, Response: {response.text[:200]})"
+                        pass
+                except Exception as e:
+                    # debug_info = f"API認証エラー (URL: {api_url}, Error: {str(e)})"
+                    pass
+            
+            if external_success:
+                session['user_id'] = user.id
+                if user.is_admin:
+                    if user.organization:
+                        session['organization_id'] = user.organization_id
+                        session['org_name'] = user.organization.name
+                    return redirect(url_for('event_select'))
+                elif user.student_record:
+                    return redirect(url_for('student_dashboard'))
+                elif user.teacher_record:
+                    return redirect(url_for('teacher_dashboard'))
+                else:
+                    return redirect(url_for('login'))
+            
+            # 3. ユーザID・パスワードが本システムに登録されているものか確認する。
+            # 一致していたらログインさせる。異なっていたら、ログインエラーにする。
+            if user.check_password(password):
+                session['user_id'] = user.id
+                if user.is_admin:
+                    if user.organization:
+                        session['organization_id'] = user.organization_id
+                        session['org_name'] = user.organization.name
+                    return redirect(url_for('event_select'))
+                elif user.student_record:
+                    return redirect(url_for('student_dashboard'))
+                elif user.teacher_record:
+                    return redirect(url_for('teacher_dashboard'))
+                else:
+                    return redirect(url_for('login'))
+                    
         return redirect(url_for('login', error="ユーザIDまたはパスワードが正しくありません"))
     return render_template('login.html')
 
 # ログアウト
 @app.route('/logout')
 def logout():
-    session.pop('user_id', None)
+    session.clear()
     return redirect(url_for('login'))
 
 # 組織一覧
@@ -849,8 +923,6 @@ def student_add():
             name=request.form['name'],
             grade=request.form['grade'],
             gender=request.form['gender'],
-            subject1='数学', # 初期値
-            subject2='なし', # 初期値
             pref_gender=request.form['pref_gender'],
             pref_age1020_priority=pref_age1020,
             pref_age3040_priority=pref_age3040,
