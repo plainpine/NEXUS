@@ -86,7 +86,7 @@ def get_subject_score(teacher, sub_name, config):
     
     return get_normalized_score(scores.get(val, 0), min_s, max_s, float(config.get("weight_subject", 1.0)))
 
-def score(teacher, s1_sub, s2_sub, student_grade, teacher_age, student_pref_age1020_priority, student_pref_age3040_priority, student_pref_age50_priority, teacher_pref_gender, student_pref_gender, teacher_gender, student_gender, config=None, historical_data=None):
+def score(teacher, s1_sub, s2_sub, student_grade, teacher_age, student_pref_age1020_priority, student_pref_age3040_priority, student_pref_age50_priority, teacher_pref_gender, student_pref_gender, teacher_gender, student_gender, config=None, historical_data=None, student_group_id=None):
     config = config or DEFAULT_CONFIG
     
     # 正規化パラメータの設定
@@ -150,6 +150,25 @@ def score(teacher, s1_sub, s2_sub, student_grade, teacher_age, student_pref_age1
         details['実績s_ach'] = get_norm(historical_data.get('s_ach', 0), -2, 2, 'weight_eval_s_ach')
         details['実績s_lea'] = get_norm(historical_data.get('s_lea', 0), -2, 2, 'weight_eval_s_lea')
 
+    # グループ評価
+    if config and config.get('group_division_enabled') == 'true':
+        t_g = getattr(teacher, 'group_id', None)
+        s_g = student_group_id
+        if t_g and s_g:
+            all_group_scores = []
+            for k, v in config.items():
+                if k.startswith('group_score_'):
+                    try:
+                        all_group_scores.append(float(v))
+                    except:
+                        pass
+            if not all_group_scores:
+                all_group_scores = [0, 10]
+            min_g = min(all_group_scores)
+            max_g = max(all_group_scores)
+            g_score = float(config.get(f"group_score_{t_g}_{s_g}", 0))
+            details['グループ'] = get_normalized_score(g_score, min_g, max_g, float(config.get("weight_group", 1.0)))
+
     total = sum(details.values())
     return total, details
 
@@ -180,7 +199,8 @@ def simulated_annealing(teachers, students, attendances, config=None, prohibited
         total, _ = score(t, att.subject1, att.subject2, s.grade, t.age, 
                      s.pref_age1020_priority, s.pref_age3040_priority, s.pref_age50_priority,
                      t.pref_gender, s.pref_gender, t.gender, s.gender, config, 
-                     historical_data=(evaluation_map or {}).get((s.id, t.id)))
+                     historical_data=(evaluation_map or {}).get((s.id, t.id)),
+                     student_group_id=s.group_id)
         return total
 
     pair_scores = [
@@ -305,7 +325,8 @@ def evaluate_assignment_energy(teachers, students, attendances, assignment_dict,
         total, _ = score(t, att.subject1, att.subject2, s.grade, t.age, 
                      s.pref_age1020_priority, s.pref_age3040_priority, s.pref_age50_priority,
                      t.pref_gender, s.pref_gender, t.gender, s.gender, config, 
-                     historical_data=(evaluation_map or {}).get((s.id, t.id)))
+                     historical_data=(evaluation_map or {}).get((s.id, t.id)),
+                     student_group_id=s.group_id)
         return total
 
     total_score = 0.0

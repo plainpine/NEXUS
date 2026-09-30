@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header" style="display: flex; align-items: center; justify-content: space-between;">
+    <div>
+        <h1>グループ設定</h1>
+        <p style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">講師と生徒を各グループにドラッグ＆ドロップで割り当ててください。<br>グループヘッダーをドラッグしてグループの並び替えができます。</p>
+    </div>
+    <div>
+        <form action="{{ url_for('add_group') }}" method="post" style="display: inline;">
+            <button type="submit" class="btn btn-secondary">＋ グループ追加</button>
+        </form>
+        <button class="btn btn-primary" onclick="saveGroupAssignments()" style="margin-left: 0.5rem;">保存</button>
+    </div>
+</div>
+
+<style>
+    .groups-container { display: flex; gap: 1.5rem; overflow-x: auto; padding-bottom: 1rem; align-items: stretch; }
+    .group-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; width: 320px; min-width: 320px; height: 600px; display: flex; flex-direction: column; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: opacity 0.2s; }
+    .group-card.dragging { opacity: 0.4; }
+    .group-header { background: #f8f9fa; padding: 0.75rem 1rem; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; border-top-left-radius: 8px; border-top-right-radius: 8px; flex-shrink: 0; cursor: grab; }
+    .group-header:active { cursor: grabbing; }
+    .group-body { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; flex-grow: 1; height: calc(100% - 50px); box-sizing: border-box; }
+    .group-section { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .drop-zone { flex-grow: 1; border: 2px dashed #ccc; border-radius: 6px; padding: 0.5rem; background: #fafafa; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; min-height: 0; }
+    .draggable-item { background: #e9ecef; border: 1px solid #ced4da; border-radius: 4px; padding: 0.4rem 0.5rem; cursor: grab; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+    .draggable-item:active { cursor: grabbing; }
+    .section-title { font-size: 0.85rem; font-weight: bold; color: #555; margin-bottom: 0.2rem; flex-shrink: 0; }
+</style>
+
+<div class="groups-container">
+    {% for g in groups %}
+    <div class="group-card" data-group-id="{{ g.id }}" draggable="false" ondragover="groupDragOver(event)" ondrop="groupDrop(event)">
+        <div class="group-header" draggable="true" ondragstart="groupDragStart(event)" ondragend="groupDragEnd(event)">
+            <h3 style="margin: 0; font-size: 1.1rem; pointer-events: none;">⠿ グループ {{ g.name }}</h3>
+            {% if groups|length > 1 %}
+            <form action="{{ url_for('delete_group', group_id=g.id) }}" method="post" onsubmit="return confirm('このグループを削除しますか？所属メンバーは別のグループに移動します。');" style="margin: 0;" onclick="event.stopPropagation();">
+                <button type="submit" class="btn" style="background: #dc3545; color: white; padding: 0.25rem 0.5rem; font-size: 0.8rem; border: none; border-radius: 4px;">削除</button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="group-body">
+            <div class="group-section">
+                <div class="section-title">講師</div>
+                <div class="drop-zone teacher-drop-zone" ondrop="drop(event)" ondragover="allowDrop(event)" data-type="teacher">
+                    {% for t in teachers %}
+                    {% if t.group_id == g.id %}
+                    <div class="draggable-item" draggable="true" ondragstart="drag(event)" data-id="{{ t.id }}" data-type="teacher" title="希望性別: {{ t.pref_gender or '不問' }}&#10;希望学年: {{ '中3' if t.pref_mid3_priority == 1 and t.pref_mid1_priority == 3 else ('中12' if t.pref_mid1_priority == 1 and t.pref_mid3_priority == 3 else '不問') }}">
+                        <span>🧑‍🏫 {{ t.name }}</span>
+                        <span style="font-size: 0.75rem; color: #666;">{{ t.age or '－' }} / {{ t.gender or '－' }}</span>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="group-section">
+                <div class="section-title">生徒</div>
+                <div class="drop-zone student-drop-zone" ondrop="drop(event)" ondragover="allowDrop(event)" data-type="student">
+                    {% for s in students %}
+                    {% if s.group_id == g.id %}
+                    <div class="draggable-item" draggable="true" ondragstart="drag(event)" data-id="{{ s.id }}" data-type="student" title="希望性別: {{ s.pref_gender or '不問' }}&#10;希望年齢: {{ 'ヤング' if s.pref_age1020_priority == 1 else ('アダルト' if s.pref_age50_priority == 1 else '不問') }}">
+                        <span>🎓 {{ s.name }}</span>
+                        <span style="font-size: 0.75rem; color: #666;">{{ s.grade or '－' }} / {{ s.gender or '－' }}</span>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+// Member drag and drop
+function allowDrop(ev) {
+    ev.preventDefault();
+}
+
+function drag(ev) {
+    ev.dataTransfer.setData("id", ev.target.getAttribute("data-id"));
+    ev.dataTransfer.setData("type", ev.target.getAttribute("data-type"));
+    ev.dataTransfer.setData("is-group", "false");
+}
+
+function drop(ev) {
+    ev.preventDefault();
+    if (ev.dataTransfer.getData("is-group") === "true") return;
+    
+    var id = ev.dataTransfer.getData("id");
+    var type = ev.dataTransfer.getData("type");
+    
+    var target = ev.target;
+    while (target && !target.classList.contains('drop-zone')) {
+        target = target.parentElement;
+    }
+    
+    if (!target) return;
+    
+    var targetType = target.getAttribute("data-type");
+    if (type !== targetType) {
+        alert(type === 'teacher' ? '講師は講師エリアにのみドロップできます。' : '生徒は生徒エリアにのみドロップできます。');
+        return;
+    }
+    
+    var item = document.querySelector(`.draggable-item[data-id="${id}"][data-type="${type}"]`);
+    if (item) {
+        target.appendChild(item);
+    }
+}
+
+// Group card drag and drop for reordering
+let draggedGroupCard = null;
+
+function groupDragStart(ev) {
+    var card = ev.target.closest('.group-card');
+    draggedGroupCard = card;
+    ev.dataTransfer.setData("is-group", "true");
+    ev.dataTransfer.setData("group-id", card.getAttribute('data-group-id'));
+    ev.dataTransfer.effectAllowed = "move";
+    setTimeout(() => card.classList.add('dragging'), 0);
+}
+
+function groupDragEnd(ev) {
+    if (draggedGroupCard) {
+        draggedGroupCard.classList.remove('dragging');
+        draggedGroupCard = null;
+    }
+}
+
+function groupDragOver(ev) {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "move";
+}
+
+function groupDrop(ev) {
+    ev.preventDefault();
+    if (ev.dataTransfer.getData("is-group") !== "true") return;
+    
+    var targetCard = ev.target.closest('.group-card');
+    if (!targetCard || !draggedGroupCard || targetCard === draggedGroupCard) return;
+    
+    var container = targetCard.parentNode;
+    var cards = Array.from(container.querySelectorAll('.group-card'));
+    var draggedIndex = cards.indexOf(draggedGroupCard);
+    var targetIndex = cards.indexOf(targetCard);
+    
+    if (draggedIndex < targetIndex) {
+        container.insertBefore(draggedGroupCard, targetCard.nextSibling);
+    } else {
+        container.insertBefore(draggedGroupCard, targetCard);
+    }
+    
+    saveGroupOrder();
+}
+
+function saveGroupOrder() {
+    var groupIds = [];
+    document.querySelectorAll('.groups-container .group-card').forEach(card => {
+        groupIds.push(card.getAttribute('data-group-id'));
+    });
+    
+    fetch('/groups/reorder', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ group_ids: groupIds }),
+    }).then(response => response.json()).then(result => {
+        if (result.status !== 'success') {
+            console.error('Failed to save group order');
+        }
+    }).catch(err => {
+        console.error(err);
+    });
+}
+
+function saveGroupAssignments() {
+    var teacherAssignments = {};
+    var studentAssignments = {};
+    
+    document.querySelectorAll('.group-card').forEach(card => {
+        var groupId = card.getAttribute('data-group-id');
+        
+        card.querySelectorAll('.teacher-drop-zone .draggable-item').forEach(item => {
+            var tId = item.getAttribute('data-id');
+            teacherAssignments[tId] = groupId;
+        });
+        
+        card.querySelectorAll('.student-drop-zone .draggable-item').forEach(item => {
+            var sId = item.getAttribute('data-id');
+            studentAssignments[sId] = groupId;
+        });
+    });
+    
+    var payload = {
+        teacher_assignments: teacherAssignments,
+        student_assignments: studentAssignments
+    };
+    
+    fetch('/groups/save', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    }).then(response => response.json()).then(result => {
+        if (result.status === 'success') {
+            alert('グループ設定を保存しました');
+            window.location.reload();
+        } else {
+            alert('保存に失敗しました');
+        }
+    }).catch(err => {
+        console.error(err);
+        alert('保存中にエラーが発生しました');
+    });
+}
+</script>
+{% endblock %}

@@ -142,6 +142,9 @@
                 <tr>
                     <td>
                         <strong style="color: var(--primary);">{{ r.teacher }}</strong>
+                        {% if group_division_enabled and t.group %}
+                        <span style="display: inline-block; background: #e0f2fe; color: #0369a1; font-weight: bold; font-size: 0.8rem; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 4px;">{{ t.group.name }}</span>
+                        {% endif %}
                         <span class="profile-info">
                             ({{ t.age }} / {{ t.gender }} / 
                             {% set subjects = "" %}
@@ -156,6 +159,9 @@
                     <td class="arrow-cell" style="text-align: center; color: var(--border);">→</td>
                     <td>
                         <strong style="color: #10b981;">{{ r.student }}</strong>
+                        {% if group_division_enabled and s.group %}
+                        <span style="display: inline-block; background: #e0f2fe; color: #0369a1; font-weight: bold; font-size: 0.8rem; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 4px;">{{ s.group.name }}</span>
+                        {% endif %}
                         <span class="profile-info">
                             ({{ s.grade }} / {{ s.gender }} / 
                             {% set s1 = sa.subject1 if sa and sa.subject1 and sa.subject1 != 'なし' and sa.subject1 != '欠席' else None %}

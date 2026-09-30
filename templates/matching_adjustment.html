@@ -46,6 +46,9 @@
             <div class="tooltip-wrapper">
                 <h3 style="margin: 0;">
                     {{ t.name }}
+                    {% if group_division_enabled and t.group %}
+                    <span style="display: inline-block; background: #e0f2fe; color: #0369a1; font-weight: bold; font-size: 0.8rem; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 4px;">{{ t.group.name }}</span>
+                    {% endif %}
                     {% set att = data.teacher_attendance %}
                     {% if att and (att.subject1 == '欠席' or att.subject2 == '欠席') %}
                         <span style="font-size: 0.9rem; font-weight: normal; color: #d9534f;">
@@ -76,6 +79,9 @@
             <div style="margin-bottom: 0.25rem;">
                 <div class="tooltip-wrapper">
                     {{ s.name }}
+                    {% if group_division_enabled and s.group %}
+                    <span style="display: inline-block; background: #e0f2fe; color: #0369a1; font-weight: bold; font-size: 0.8rem; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 4px;">{{ s.group.name }}</span>
+                    {% endif %}
                     <span class="tooltip">希望: 
                         {% if s.pref_age1020_priority == 1 %}ヤング{% elif s.pref_age50_priority == 1 %}アダルト{% else %}年齢不問{% endif %} / {{ s.pref_gender if s.pref_gender != '不問' else '性別不問' }}
                     </span>
@@ -94,7 +100,7 @@
             {% for item in data.adj_students %}
             {% set student = item.student %}
             <div class="student-card" draggable="true" ondragstart="drag(event)" data-student-id="{{ student.id }}" style="background: #e9ecef; padding: 0.5rem; margin: 0.25rem; display: inline-block; border-radius: 4px;">
-                {{ student.name }} <span class="student-score" data-student-id="{{ student.id }}" style="color: #007bff; font-weight: bold; font-size: 0.85rem; margin-left: 4px;"></span>
+                {{ student.name }} {% if group_division_enabled and student.group %}<span style="display: inline-block; background: #e0f2fe; color: #0369a1; font-weight: bold; font-size: 0.8rem; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 4px;">{{ student.group.name }}</span>{% endif %} <span class="student-score" data-student-id="{{ student.id }}" style="color: #007bff; font-weight: bold; font-size: 0.85rem; margin-left: 4px;"></span>
             </div>
             {% endfor %}
         </div>

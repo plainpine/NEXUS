@@ -24,8 +24,13 @@
             <i>📍</i> 会場一覧
         </a>
         <a href="/settings" class="nav-item {{ 'active' if request.path == '/settings' }}">
-            <i>⚙️</i> デフォルト設定
+            <i>⚙️</i> 設定
         </a>
+        {% if group_division_enabled %}
+        <a href="/groups" class="nav-item {{ 'active' if request.path == '/groups' }}">
+            <i>👥</i> グループ設定
+        </a>
+        {% endif %}
         <a href="/prohibited_matches" class="nav-item {{ 'active' if request.path == '/prohibited_matches' }}">
             <i>🚫</i> マッチング禁止
         </a>

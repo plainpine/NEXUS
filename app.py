@@ -3,7 +3,7 @@ import json
 from functools import wraps
 from datetime import datetime
 from sqlalchemy import inspect, text
-from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation, ProhibitedMatch, BestMatch
+from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation, ProhibitedMatch, BestMatch, Group
 from matching import simulated_annealing, evaluation_rating_to_score, score, get_subject_proficiency, DEFAULT_CONFIG, evaluate_assignment_energy
 import os
 import requests
@@ -47,6 +47,7 @@ with app.app_context():
             'hist_score_t_tea': 'ALTER TABLE match_result ADD COLUMN hist_score_t_tea FLOAT',
             'hist_score_s_ach': 'ALTER TABLE match_result ADD COLUMN hist_score_s_ach FLOAT',
             'hist_score_s_lea': 'ALTER TABLE match_result ADD COLUMN hist_score_s_lea FLOAT',
+            'group_score': 'ALTER TABLE match_result ADD COLUMN group_score FLOAT',
         }
         for column_name, alter_statement in missing_columns.items():
             if column_name not in columns:
@@ -55,6 +56,33 @@ with app.app_context():
             
     if 'prohibited_match' not in inspector.get_table_names():
         db.session.execute(text('CREATE TABLE prohibited_match (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER, student_id INTEGER, teacher_id INTEGER, FOREIGN KEY(organization_id) REFERENCES organization(id), FOREIGN KEY(student_id) REFERENCES student(id), FOREIGN KEY(teacher_id) REFERENCES teacher(id))'))
+        db.session.commit()
+
+    if 'group' not in inspector.get_table_names():
+        db.session.execute(text('CREATE TABLE "group" (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(50) NOT NULL, display_order INTEGER DEFAULT 0, organization_id INTEGER NOT NULL, FOREIGN KEY(organization_id) REFERENCES organization(id))'))
+        db.session.commit()
+    else:
+        cols = {c['name'] for c in inspector.get_columns('group')}
+        if 'display_order' not in cols:
+            db.session.execute(text('ALTER TABLE "group" ADD COLUMN display_order INTEGER DEFAULT 0'))
+            db.session.commit()
+
+    for tbl in ['teacher', 'student']:
+        if tbl in inspector.get_table_names():
+            cols = {c['name'] for c in inspector.get_columns(tbl)}
+            if 'group_id' not in cols:
+                db.session.execute(text(f'ALTER TABLE {tbl} ADD COLUMN group_id INTEGER REFERENCES "group"(id)'))
+                db.session.commit()
+
+    orgs = Organization.query.all()
+    for org in orgs:
+        default_grp = Group.query.filter_by(organization_id=org.id).first()
+        if not default_grp:
+            default_grp = Group(name='グループA', organization_id=org.id)
+            db.session.add(default_grp)
+            db.session.commit()
+        Teacher.query.filter_by(organization_id=org.id, group_id=None).update({Teacher.group_id: default_grp.id})
+        Student.query.filter_by(organization_id=org.id, group_id=None).update({Student.group_id: default_grp.id})
         db.session.commit()
 
 # ログインチェックデコレータ
@@ -239,11 +267,16 @@ def organization_required(f):
     return decorated_function
 
 @app.context_processor
-def inject_user():
+def inject_globals():
     user = None
+    group_division_enabled = False
     if 'user_id' in session:
         user = db.session.get(User, session['user_id'])
-    return dict(current_user=user)
+        if user and user.organization_id:
+            cfg = Config.query.filter_by(key='group_division_enabled', organization_id=user.organization_id).first()
+            if cfg and cfg.value == 'true':
+                group_division_enabled = True
+    return dict(current_user=user, group_division_enabled=group_division_enabled)
 
 # 管理者チェックデコレータ
 def admin_required(f):
@@ -1363,7 +1396,118 @@ def matching_config():
         return redirect(url_for('matching_config'))
     
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
-    return render_template('matching_config.html', configs=configs)
+    groups = Group.query.filter_by(organization_id=org_id).all()
+    return render_template('matching_config.html', configs=configs, groups=groups)
+
+# グループ設定画面
+@app.route('/groups', methods=['GET'])
+@login_required
+@organization_required
+def groups_view():
+    org_id = session['organization_id']
+    configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
+    if configs.get('group_division_enabled') != 'true':
+        abort(403)
+        
+    groups = Group.query.filter_by(organization_id=org_id).order_by(Group.display_order, Group.id).all()
+    teachers = Teacher.query.filter_by(organization_id=org_id).all()
+    students = Student.query.filter_by(organization_id=org_id).all()
+    return render_template('groups.html', groups=groups, teachers=teachers, students=students)
+
+@app.route('/groups/reorder', methods=['POST'])
+@login_required
+@organization_required
+def reorder_groups():
+    org_id = session['organization_id']
+    configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
+    if configs.get('group_division_enabled') != 'true':
+        return jsonify({"status": "error", "message": "Group division not enabled"}), 403
+        
+    data = request.get_json()
+    group_ids = data.get('group_ids', [])
+    
+    for index, g_id_str in enumerate(group_ids):
+        g = db.session.get(Group, int(g_id_str))
+        if g and g.organization_id == org_id:
+            g.display_order = index
+            
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+@app.route('/groups/add', methods=['POST'])
+@login_required
+@organization_required
+def add_group():
+    org_id = session['organization_id']
+    configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
+    if configs.get('group_division_enabled') != 'true':
+        abort(403)
+        
+    existing_groups = Group.query.filter_by(organization_id=org_id).all()
+    existing_letters = {g.name for g in existing_groups}
+    letter = 'A'
+    for l in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']:
+        if l not in existing_letters:
+            letter = l
+            break
+            
+    new_group = Group(name=letter, organization_id=org_id)
+    db.session.add(new_group)
+    db.session.commit()
+    flash('グループを追加しました')
+    return redirect(url_for('groups_view'))
+
+@app.route('/groups/delete/<int:group_id>', methods=['POST'])
+@login_required
+@organization_required
+def delete_group(group_id):
+    org_id = session['organization_id']
+    configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
+    if configs.get('group_division_enabled') != 'true':
+        abort(403)
+        
+    group = db.session.get(Group, group_id)
+    if not group or group.organization_id != org_id:
+        abort(404)
+        
+    other_group = Group.query.filter(Group.organization_id == org_id, Group.id != group_id).first()
+    if not other_group:
+        flash('最後のグループは削除できません')
+        return redirect(url_for('groups_view'))
+        
+    Teacher.query.filter_by(group_id=group_id).update({Teacher.group_id: other_group.id})
+    Student.query.filter_by(group_id=group_id).update({Student.group_id: other_group.id})
+    
+    db.session.delete(group)
+    db.session.commit()
+    flash('グループを削除しました')
+    return redirect(url_for('groups_view'))
+
+@app.route('/groups/save', methods=['POST'])
+@login_required
+@organization_required
+def save_groups():
+    org_id = session['organization_id']
+    configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
+    if configs.get('group_division_enabled') != 'true':
+        return jsonify({"status": "error", "message": "Group division not enabled"}), 403
+        
+    data = request.get_json()
+    teacher_assignments = data.get('teacher_assignments', {})
+    student_assignments = data.get('student_assignments', {})
+    
+    for t_id_str, g_id_str in teacher_assignments.items():
+        t = db.session.get(Teacher, int(t_id_str))
+        if t and t.organization_id == org_id:
+            t.group_id = int(g_id_str)
+            
+    for s_id_str, g_id_str in student_assignments.items():
+        s = db.session.get(Student, int(s_id_str))
+        if s and s.organization_id == org_id:
+            s.group_id = int(g_id_str)
+            
+    db.session.commit()
+    return jsonify({"status": "success"})
 
 @app.route('/matching/adjustment', methods=['GET'])
 @login_required
@@ -1529,7 +1673,8 @@ def calculate_adjustment():
                 t, att_sub1, att_sub2, s.grade, t.age,
                 s.pref_age1020_priority, s.pref_age3040_priority, s.pref_age50_priority,
                 t.pref_gender, s.pref_gender, t.gender, s.gender,
-                configs, historical_data=final_evaluation_map.get((s.id, t.id))
+                configs, historical_data=final_evaluation_map.get((s.id, t.id)),
+                student_group_id=s.group_id
             )
             student_scores[s_id] = round(pair_score, 2)
             total_score += pair_score
@@ -1772,7 +1917,8 @@ def matching():
                 t, att_sub1, att_sub2, s.grade, t.age,
                 s.pref_age1020_priority, s.pref_age3040_priority, s.pref_age50_priority,
                 t.pref_gender, s.pref_gender, t.gender, s.gender,
-                configs, historical_data=final_evaluation_map.get((s.id, t.id))
+                configs, historical_data=final_evaluation_map.get((s.id, t.id)),
+                student_group_id=s.group_id
             )
 
             new_match = MatchResult(
@@ -1792,7 +1938,8 @@ def matching():
                 hist_score_t_ach=float(details.get('実績t_ach', 0)),
                 hist_score_t_tea=float(details.get('実績t_tea', 0)),
                 hist_score_s_ach=float(details.get('実績s_ach', 0)),
-                hist_score_s_lea=float(details.get('実績s_lea', 0))
+                hist_score_s_lea=float(details.get('実績s_lea', 0)),
+                group_score=float(details.get('グループ', 0))
             )
             db.session.add(new_match)
         db.session.commit()
@@ -1847,6 +1994,10 @@ def result():
     if not event_id:
         return redirect(url_for('event_select'))
 
+    org_id = session.get('organization_id')
+    configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()} if org_id else {}
+    group_division_enabled = (configs.get('group_division_enabled') == 'true')
+
     query = MatchResult.query.filter_by(event_id=event_id)
     if sort_by == 'student':
         results = query.order_by(MatchResult.student, MatchResult.student_id).all()
@@ -1872,8 +2023,10 @@ def result():
                 f"生徒(進捗/学): {(r.hist_score_s_ach or 0):.2f} / {(r.hist_score_s_lea or 0):.2f}", 
                 f"合計: {((r.hist_score_t_ach or 0) + (r.hist_score_t_tea or 0) + (r.hist_score_s_ach or 0) + (r.hist_score_s_lea or 0)):.2f}"
             ],
-            '合計スコア': f"{(r.score or 0):.2f}"
         }
+        if group_division_enabled:
+            score_details['グループ'] = [f"スコア: {(r.group_score or 0):.2f}"]
+        score_details['合計スコア'] = f"{(r.score or 0):.2f}"
         
         enriched_results.append({
             'result': r,

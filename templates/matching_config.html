@@ -128,6 +128,43 @@
             </div>
         </div>
 
+        <h3>6. グループ間スコア設定</h3>
+        {% if configs.get('group_division_enabled') == 'true' %}
+        <div class="form-group">
+            <label>講師グループ × 生徒グループ マトリックススコア</label>
+            <p style="font-size: 0.85rem; color: #666; margin-bottom: 0.75rem;">同じグループや特定のグループ間で組み合わせやすくなるボーナススコアを設定します。</p>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 1rem;">
+                <thead>
+                    <tr>
+                        <th style="border: 1px solid #ddd; padding: 8px; background: #f8f9fa;">講師 \ 生徒</th>
+                        {% for sg in groups %}
+                        <th style="border: 1px solid #ddd; padding: 8px; background: #f8f9fa;">グループ {{ sg.name }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tg in groups %}
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 8px; background: #f8f9fa; font-weight: bold;">グループ {{ tg.name }}</td>
+                        {% for sg in groups %}
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">
+                            <input type="number" name="group_score_{{ tg.id }}_{{ sg.id }}" value="{{ configs.get('group_score_' ~ tg.id ~ '_' ~ sg.id, '10' if tg.id == sg.id else '0') }}" style="width: 80px; text-align: center;">
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <label>グループカテゴリ重み: <input type="number" step="0.1" name="weight_group" class="weight-input" value="{{ configs.get('weight_group', 1.0) }}" style="width: 80px;"></label>
+            </div>
+        </div>
+        {% else %}
+        <div class="form-group" style="color: #666;">
+            <p>グループ分け機能が無効になっているため、グループ間スコア設定は無効です。（「設定」画面からグループ分け機能を有効にしてください）</p>
+        </div>
+        {% endif %}
+
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
             <button type="submit" class="btn btn-primary">保存する</button>
             <a href="{{ url_for('matching_setup') }}" class="btn btn-outline">キャンセル</a>

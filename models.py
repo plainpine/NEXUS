@@ -8,6 +8,16 @@ class Organization(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
 
+# グループ
+class Group(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)
+    display_order = db.Column(db.Integer, default=0)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=False)
+    organization = db.relationship('Organization', backref='groups')
+    teachers = db.relationship('Teacher', back_populates='group', cascade='all, delete-orphan')
+    students = db.relationship('Student', back_populates='group', cascade='all, delete-orphan')
+
 # 会場
 class Venue(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -49,6 +59,8 @@ class Teacher(db.Model):
     organization = db.relationship('Organization')
     default_venue_id = db.Column(db.Integer, db.ForeignKey('venue.id'), nullable=True)
     default_venue = db.relationship('Venue')
+    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)
+    group = db.relationship('Group', back_populates='teachers')
     name = db.Column(db.String(50), nullable=False)
     age = db.Column(db.String(20))
     gender = db.Column(db.String(10))
@@ -91,6 +103,8 @@ class Student(db.Model):
     organization = db.relationship('Organization')
     default_venue_id = db.Column(db.Integer, db.ForeignKey('venue.id'), nullable=True)
     default_venue = db.relationship('Venue')
+    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)
+    group = db.relationship('Group', back_populates='students')
     name = db.Column(db.String(50), nullable=False)
     grade = db.Column(db.String(20))
     gender = db.Column(db.String(10))
@@ -165,6 +179,7 @@ class MatchResult(db.Model):
     hist_score_t_tea = db.Column(db.Float, nullable=True)
     hist_score_s_ach = db.Column(db.Float, nullable=True)
     hist_score_s_lea = db.Column(db.Float, nullable=True)
+    group_score = db.Column(db.Float, nullable=True)
 
 class AdjustedMatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
