@@ -32,7 +32,10 @@
     {% for g in groups %}
     <div class="group-card" data-group-id="{{ g.id }}" draggable="false" ondragover="groupDragOver(event)" ondrop="groupDrop(event)">
         <div class="group-header" draggable="true" ondragstart="groupDragStart(event)" ondragend="groupDragEnd(event)">
-            <h3 style="margin: 0; font-size: 1.1rem; pointer-events: none;">⠿ グループ {{ g.name }}</h3>
+            <div style="display: flex; align-items: center; gap: 0.4rem;" ondragstart="event.stopPropagation();" onmousedown="event.stopPropagation();" onclick="event.stopPropagation();">
+                <span style="cursor: grab; color: #666;" title="ドラッグしてグループ並び替え">⠿</span>
+                <input type="text" class="group-name-input" data-group-id="{{ g.id }}" value="{{ g.name }}" style="width: 130px; padding: 0.2rem 0.4rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95rem; font-weight: bold;" draggable="false">
+            </div>
             {% if groups|length > 1 %}
             <form action="{{ url_for('delete_group', group_id=g.id) }}" method="post" onsubmit="return confirm('このグループを削除しますか？所属メンバーは別のグループに移動します。');" style="margin: 0;" onclick="event.stopPropagation();">
                 <button type="submit" class="btn" style="background: #dc3545; color: white; padding: 0.25rem 0.5rem; font-size: 0.8rem; border: none; border-radius: 4px;">削除</button>
@@ -178,9 +181,14 @@ function saveGroupOrder() {
 function saveGroupAssignments() {
     var teacherAssignments = {};
     var studentAssignments = {};
+    var groupNames = {};
     
     document.querySelectorAll('.group-card').forEach(card => {
         var groupId = card.getAttribute('data-group-id');
+        var nameInput = card.querySelector('.group-name-input');
+        if (nameInput) {
+            groupNames[groupId] = nameInput.value.trim();
+        }
         
         card.querySelectorAll('.teacher-drop-zone .draggable-item').forEach(item => {
             var tId = item.getAttribute('data-id');
@@ -195,7 +203,8 @@ function saveGroupAssignments() {
     
     var payload = {
         teacher_assignments: teacherAssignments,
-        student_assignments: studentAssignments
+        student_assignments: studentAssignments,
+        group_names: groupNames
     };
     
     fetch('/groups/save', {

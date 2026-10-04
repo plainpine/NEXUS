@@ -1396,7 +1396,7 @@ def matching_config():
         return redirect(url_for('matching_config'))
     
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
-    groups = Group.query.filter_by(organization_id=org_id).all()
+    groups = Group.query.filter_by(organization_id=org_id).order_by(Group.display_order, Group.id).all()
     return render_template('matching_config.html', configs=configs, groups=groups)
 
 # グループ設定画面
@@ -1495,6 +1495,13 @@ def save_groups():
     data = request.get_json()
     teacher_assignments = data.get('teacher_assignments', {})
     student_assignments = data.get('student_assignments', {})
+    group_names = data.get('group_names', {})
+    
+    for g_id_str, g_name in group_names.items():
+        if g_name and g_name.strip():
+            g = db.session.get(Group, int(g_id_str))
+            if g and g.organization_id == org_id:
+                g.name = g_name.strip()
     
     for t_id_str, g_id_str in teacher_assignments.items():
         t = db.session.get(Teacher, int(t_id_str))
