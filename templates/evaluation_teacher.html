@@ -59,10 +59,10 @@
                 <td>
                     {% set reg1 = item.evals['前半'].registered_by if item.evals['前半'] else None %}
                     {% set reg2 = item.evals['後半'].registered_by if item.evals['後半'] else None %}
-                    {% if reg1 == 'admin' or reg2 == 'admin' %}
-                        ☆
-                    {% elif reg1 == 'teacher' or reg2 == 'teacher' %}
+                    {% if reg1 == 'teacher' or reg2 == 'teacher' %}
                         ★
+                    {% elif reg1 == 'admin' or reg2 == 'admin' %}
+                        ☆
                     {% else %}
                         &nbsp;
                     {% endif %}
