@@ -198,6 +198,7 @@ class TeacherEvaluation(db.Model):
     subject_type = db.Column(db.String(10)) # '前半', '後半'
     achievement = db.Column(db.Integer)  # 1-4
     teachability = db.Column(db.Integer) # 1-4 (教えやすさ)
+    registered_by = db.Column(db.String(20)) # 'teacher', 'admin'
 
 class StudentEvaluation(db.Model):
     id = db.Column(db.Integer, primary_key=True)

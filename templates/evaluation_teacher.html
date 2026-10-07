@@ -6,6 +6,7 @@
         width: 100%;
         table-layout: fixed; /* 列幅を固定して見切れを防ぐ */
         border-collapse: collapse;
+        border: 1px solid #ddd;
     }
     .evaluation-table th, .evaluation-table td {
         padding: 8px;
@@ -42,6 +43,7 @@
     <table class="evaluation-table">
         <thead>
             <tr>
+                <th style="width: 5%;">登録</th>
                 <th style="width: 15%;">生徒名</th>
                 <th style="width: 15%;">前半担当講師</th>
                 <th style="width: 10%;">前半：学習進捗度</th>
@@ -54,6 +56,17 @@
         <tbody>
             {% for item in data %}
             <tr>
+                <td>
+                    {% set reg1 = item.evals['前半'].registered_by if item.evals['前半'] else None %}
+                    {% set reg2 = item.evals['後半'].registered_by if item.evals['後半'] else None %}
+                    {% if reg1 == 'admin' or reg2 == 'admin' %}
+                        ☆
+                    {% elif reg1 == 'teacher' or reg2 == 'teacher' %}
+                        ★
+                    {% else %}
+                        &nbsp;
+                    {% endif %}
+                </td>
                 <td>
                     {{ item.student.name }}
                     {% if item.attendance and item.attendance.subject1 and item.attendance.subject2 %}

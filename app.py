@@ -74,6 +74,12 @@ with app.app_context():
                 db.session.execute(text(f'ALTER TABLE {tbl} ADD COLUMN group_id INTEGER REFERENCES "group"(id)'))
                 db.session.commit()
 
+    if 'teacher_evaluation' in inspector.get_table_names():
+        cols = {c['name'] for c in inspector.get_columns('teacher_evaluation')}
+        if 'registered_by' not in cols:
+            db.session.execute(text('ALTER TABLE teacher_evaluation ADD COLUMN registered_by VARCHAR(20)'))
+            db.session.commit()
+
     orgs = Organization.query.all()
     for org in orgs:
         default_grp = Group.query.filter_by(organization_id=org.id).first()
@@ -2330,6 +2336,7 @@ def evaluation_teacher():
                 # 値を更新
                 eval.achievement = data.get('ach', eval.achievement)
                 eval.teachability = data.get('tea', eval.teachability)
+                eval.registered_by = 'admin'
         
         db.session.commit()
         flash('評価を保存しました')
@@ -2373,6 +2380,69 @@ def evaluation_teacher():
         
     return render_template('evaluation_teacher.html', data=data, teachers=participating_teachers, 
                            achievement_map=achievement_map, teachability_map=teachability_map)
+
+# 講師による学習会の評価画面（講師ログイン時）
+@app.route('/teacher/evaluation', methods=['GET', 'POST'])
+@login_required
+def teacher_evaluation():
+    user = db.session.get(User, session['user_id'])
+    teacher = user.teacher_record
+    if not teacher:
+        abort(403)
+    
+    org_id = user.organization_id
+    
+    # 評価ラベル定義
+    achievement_map = {'4': 'とてもよくできた', '3': 'よくできた', '2': 'あまりできなかった', '1': 'できなかった'}
+    teachability_map = {'4': 'とても教えやすい', '3': '教えやすい', '2': 'あまり教えやすくない', '1': '教えやすくない'}
+    
+    # 「実施後」の「学習会」イベントを取得
+    events = Event.query.filter_by(organization_id=org_id, name='学習会', status='実施後').order_by(Event.date.desc()).all()
+    event_ids = [e.id for e in events]
+    
+    if request.method == 'POST':
+        event_id = int(request.form.get('event_id'))
+        student_id = int(request.form.get('student_id'))
+        
+        for sub in ['前半', '後半']:
+            ach_val = request.form.get(f'achievement_{student_id}_{sub}')
+            tea_val = request.form.get(f'teachability_{student_id}_{sub}')
+            
+            eval = TeacherEvaluation.query.filter_by(event_id=event_id, teacher_id=teacher.id, student_id=student_id, subject_type=sub).first()
+            if eval and ach_val is not None and tea_val is not None:
+                eval.achievement = int(ach_val)
+                eval.teachability = int(tea_val)
+                eval.registered_by = 'teacher'
+        db.session.commit()
+        flash('評価を保存しました')
+        return redirect(url_for('teacher_evaluation'))
+    
+    evals = TeacherEvaluation.query.filter(
+        TeacherEvaluation.teacher_id == teacher.id,
+        TeacherEvaluation.event_id.in_(event_ids)
+    ).all() if event_ids else []
+    
+    event_map = {e.id: e for e in events}
+    data_map = {}
+    
+    for eval in evals:
+        key = (eval.event_id, eval.student_id)
+        if key not in data_map:
+            student = db.session.get(Student, eval.student_id)
+            event = event_map.get(eval.event_id)
+            attendance = EventAttendance.query.filter_by(event_id=eval.event_id, user_id=student.user_id).first() if student else None
+            data_map[key] = {
+                'event': event,
+                'student': student,
+                'attendance': attendance,
+                'evals': {'前半': None, '後半': None}
+            }
+        data_map[key]['evals'][eval.subject_type] = eval
+        
+    data = list(data_map.values())
+    data.sort(key=lambda x: (x['event'].date, x['student'].name if x['student'] else ''), reverse=True)
+    
+    return render_template('teacher_evaluation.html', data=data, achievement_map=achievement_map, teachability_map=teachability_map)
 
 @app.route('/evaluation/student', methods=['GET', 'POST'])
 @login_required

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .evaluation-table {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        border: 1px solid #ddd;
+    }
+    .evaluation-table th, .evaluation-table td {
+        padding: 8px;
+        border: 1px solid #ddd;
+        text-align: center;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+    .evaluation-table th {
+        background-color: #f2f2f2;
+    }
+    select:disabled {
+        background-color: #e9ecef;
+    }
+</style>
+
+<div class="header">
+    <h1>学習会の評価</h1>
+</div>
+
+<div style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #ccc; background-color: #f9f9f9;">
+    <h3>評価基準</h3>
+    <p>
+        <strong>学習進捗度:</strong> 
+        4: とてもよくできた, 3: よくできた, 2: あまりできなかった, 1: できなかった
+    </p>
+    <p>
+        <strong>教えやすさ:</strong> 
+        4: とても教えやすい, 3: 教えやすい, 2: 少し教えにくい, 1: 教えにくい
+    </p>
+</div>
+
+<table class="evaluation-table">
+    <thead>
+        <tr>
+            <th style="width: 5%;">登録</th>
+            <th style="width: 12%;">日程</th>
+            <th style="width: 15%;">生徒名</th>
+            <th style="width: 8%;">前半科目</th>
+            <th style="width: 15%;">前半：学習進捗度</th>
+            <th style="width: 15%;">前半：教えやすさ</th>
+            <th style="width: 8%;">後半科目</th>
+            <th style="width: 15%;">後半：学習進捗度</th>
+            <th style="width: 15%;">後半：教えやすさ</th>
+            <th style="width: 8%;">操作</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in data %}
+        <form action="{{ url_for('teacher_evaluation') }}" method="POST">
+            <input type="hidden" name="event_id" value="{{ item.event.id }}">
+            <input type="hidden" name="student_id" value="{{ item.student.id }}">
+            <tr>
+                <td>
+                    {% set reg1 = item.evals['前半'].registered_by if item.evals['前半'] else None %}
+                    {% set reg2 = item.evals['後半'].registered_by if item.evals['後半'] else None %}
+                    {% if reg1 == 'admin' or reg2 == 'admin' %}
+                        ☆
+                    {% elif reg1 == 'teacher' or reg2 == 'teacher' %}
+                        ★
+                    {% else %}
+                        &nbsp;
+                    {% endif %}
+                </td>
+                <td>{{ item.event.date.strftime('%Y-%m-%d') }}</td>
+                <td>{{ item.student.name }}</td>
+                <td>{{ item.attendance.subject1 if item.attendance else '-' }}</td>
+                <td>
+                    {% set eval1 = item.evals['前半'] %}
+                    <select name="achievement_{{ item.student.id }}_前半" style="width: 100%;" {% if not eval1 %}disabled{% endif %}>
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if eval1 and eval1.achievement == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    {% set eval1 = item.evals['前半'] %}
+                    <select name="teachability_{{ item.student.id }}_前半" style="width: 100%;" {% if not eval1 %}disabled{% endif %}>
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if eval1 and eval1.teachability == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>{{ item.attendance.subject2 if item.attendance else '-' }}</td>
+                <td>
+                    {% set eval2 = item.evals['後半'] %}
+                    <select name="achievement_{{ item.student.id }}_後半" style="width: 100%;" {% if not eval2 %}disabled{% endif %}>
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if eval2 and eval2.achievement == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    {% set eval2 = item.evals['後半'] %}
+                    <select name="teachability_{{ item.student.id }}_後半" style="width: 100%;" {% if not eval2 %}disabled{% endif %}>
+                        {% for i in range(4, 0, -1) %}
+                        <option value="{{ i }}" {% if eval2 and eval2.teachability == i %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <button type="submit" class="btn btn-primary" style="padding: 0.2rem 0.4rem; font-size: 0.8rem;">保存</button>
+                </td>
+            </tr>
+        </form>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
