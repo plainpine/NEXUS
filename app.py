@@ -122,6 +122,14 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def get_or_create_default_group(org_id):
+    default_grp = Group.query.filter_by(organization_id=org_id).order_by(Group.display_order, Group.id).first()
+    if not default_grp:
+        default_grp = Group(name='グループA', organization_id=org_id)
+        db.session.add(default_grp)
+        db.session.flush()
+    return default_grp
+
 # 講師エクスポート
 @app.route('/teachers/export', methods=['GET'])
 @login_required
@@ -145,6 +153,7 @@ def teachers_import():
     
     data = json.load(file)
     org_id = session['organization_id']
+    default_grp = get_or_create_default_group(org_id)
     
     for item in data:
         # 重複チェック: 同じ組織内で氏名が同じならスキップ
@@ -167,7 +176,8 @@ def teachers_import():
             pref_mid2_priority=item.get('pref_mid2_priority', 2),
             pref_mid3_priority=item.get('pref_mid3_priority', 2),
             attend=item.get('attend', False),
-            organization_id=org_id
+            organization_id=org_id,
+            group_id=default_grp.id
         )
         
         # ユーザ作成
@@ -207,6 +217,7 @@ def students_import():
     
     data = json.load(file)
     org_id = session['organization_id']
+    default_grp = get_or_create_default_group(org_id)
     
     for item in data:
         # 重複チェック: 同じ組織内で氏名が同じならスキップ
@@ -222,7 +233,8 @@ def students_import():
             pref_age3040_priority=item.get('pref_age3040_priority', 2),
             pref_age50_priority=item.get('pref_age50_priority', 2),
             attend=item.get('attend', False),
-            organization_id=org_id
+            organization_id=org_id,
+            group_id=default_grp.id
         )
         
         # ユーザ作成
@@ -644,6 +656,9 @@ def teacher_add():
         else: # 不問
             pref_mid1, pref_mid2, pref_mid3 = 2, 2, 2
         
+        org_id = session['organization_id']
+        default_grp = get_or_create_default_group(org_id)
+
         teacher = Teacher(
             name=request.form['name'],
             age=request.form['age'],
@@ -659,7 +674,8 @@ def teacher_add():
             pref_mid3_priority=pref_mid3,
             default_venue_id=request.form.get('default_venue_id') or None,
             attend=True,
-            organization_id=session['organization_id']
+            organization_id=org_id,
+            group_id=default_grp.id
         )
         
         # ユーザ作成
@@ -764,6 +780,14 @@ def teacher_attend_save_individual():
     
     teacher = db.session.get(Teacher, teacher_id)
     is_attend = (request.form.get('attend') == 'true')
+    sub1 = request.form.get('sub1')
+    sub2 = request.form.get('sub2')
+    event = db.session.get(Event, int(event_id)) if event_id else None
+
+    if is_attend and event and event.name == '学習会':
+        if sub1 == '欠席' and sub2 == '欠席':
+            flash('出席する場合は、前半または後半の少なくとも一方を「出席」にしてください', 'error')
+            return redirect(url_for('teachers'))
     
     if event_id:
         # イベント選択中の場合、EventAttendance を更新
@@ -794,6 +818,10 @@ def teacher_attend_save_individual():
         # イベント未選択の場合は Teacher レコードを更新 (従来通り)
         teacher.attend = is_attend
 
+    db.session.commit()
+    flash('出席状況を保存しました')
+    return redirect(url_for('teachers'))
+
 @app.route('/teacher/attend_save_all', methods=['POST'])
 @login_required
 @organization_required
@@ -806,6 +834,13 @@ def teacher_attend_save_all():
     for t_id in teacher_ids:
         teacher = db.session.get(Teacher, t_id)
         is_attend = (request.form.get(f'attend_{t_id}') == 'true')
+        sub1 = request.form.get(f'sub1_{t_id}')
+        sub2 = request.form.get(f'sub2_{t_id}')
+        
+        if is_attend and event and event.name == '学習会':
+            if sub1 == '欠席' and sub2 == '欠席':
+                flash('出席する場合は、前半または後半の少なくとも一方を「出席」にしてください', 'error')
+                return redirect(request.referrer)
         
         if event:
             attendance = EventAttendance.query.filter_by(event_id=event.id, user_id=teacher.user_id).first()
@@ -842,6 +877,13 @@ def student_attend_save_all():
     for s_id in student_ids:
         student = db.session.get(Student, s_id)
         is_attend = (request.form.get(f'attend_{s_id}') == 'true')
+        sub1 = request.form.get(f'sub1_{s_id}')
+        sub2 = request.form.get(f'sub2_{s_id}')
+        
+        if is_attend and (not event or event.name == '学習会'):
+            if sub1 == 'なし' and sub2 == 'なし':
+                flash('出席する場合は、前半科目または後半科目を選択してください', 'error')
+                return redirect(request.referrer)
         
         if event:
             attendance = EventAttendance.query.filter_by(event_id=event.id, user_id=student.user_id).first()
@@ -942,8 +984,9 @@ def students():
 @organization_required
 def student_add():
     if request.method == 'POST':
+        org_id = session['organization_id']
         # 重複チェック (組織内)
-        if Student.query.filter_by(name=request.form['name'], organization_id=session['organization_id']).first():
+        if Student.query.filter_by(name=request.form['name'], organization_id=org_id).first():
             return "その名前は既に登録されています", 400
 
         # 優先度マッピング
@@ -955,6 +998,8 @@ def student_add():
         else: # 不問
             pref_age1020, pref_age3040, pref_age50 = 2, 2, 2
 
+        default_grp = get_or_create_default_group(org_id)
+
         student = Student(
             name=request.form['name'],
             grade=request.form['grade'],
@@ -965,7 +1010,8 @@ def student_add():
             pref_age50_priority=pref_age50,
             default_venue_id=request.form.get('default_venue_id') or None,
             attend=True,
-            organization_id=session['organization_id']
+            organization_id=org_id,
+            group_id=default_grp.id
         )
 
         # ユーザ作成
@@ -1049,7 +1095,15 @@ def student_attend_save_individual():
     
     student = db.session.get(Student, student_id)
     is_attend = (request.form.get('attend') == 'true')
+    sub1 = request.form.get('sub1')
+    sub2 = request.form.get('sub2')
+    event = db.session.get(Event, int(event_id)) if event_id else None
     
+    if is_attend and (not event or event.name == '学習会'):
+        if sub1 == 'なし' and sub2 == 'なし':
+            flash('出席する場合は、前半科目または後半科目を選択してください', 'error')
+            return redirect(url_for('students'))
+
     if event_id:
         # イベント選択中の場合、EventAttendance を更新
         attendance = EventAttendance.query.filter_by(event_id=int(event_id), user_id=student.user_id).first()
@@ -1409,7 +1463,26 @@ def groups_view():
     if configs.get('group_division_enabled') != 'true':
         abort(403)
         
+    default_grp = get_or_create_default_group(org_id)
     groups = Group.query.filter_by(organization_id=org_id).order_by(Group.display_order, Group.id).all()
+    group_ids = {g.id for g in groups}
+
+    teachers_all = Teacher.query.filter_by(organization_id=org_id).all()
+    updated = False
+    for t in teachers_all:
+        if t.group_id not in group_ids:
+            t.group_id = default_grp.id
+            updated = True
+            
+    students_all = Student.query.filter_by(organization_id=org_id).all()
+    for s in students_all:
+        if s.group_id not in group_ids:
+            s.group_id = default_grp.id
+            updated = True
+            
+    if updated:
+        db.session.commit()
+
     teachers = Teacher.query.filter_by(organization_id=org_id).all()
     students = Student.query.filter_by(organization_id=org_id).all()
     return render_template('groups.html', groups=groups, teachers=teachers, students=students)
