@@ -4,7 +4,7 @@ from functools import wraps
 from datetime import datetime
 from sqlalchemy import inspect, text
 from models import db, Teacher, Student, MatchResult, AdjustedMatch, User, Event, Config, EventAttendance, Organization, Venue, TeacherEvaluation, StudentEvaluation, ProhibitedMatch, BestMatch, Group
-from matching import simulated_annealing, evaluation_rating_to_score, score, get_subject_proficiency, DEFAULT_CONFIG, evaluate_assignment_energy
+from matching import simulated_annealing, evaluation_rating_to_score, score, get_subject_proficiency, DEFAULT_CONFIG, evaluate_assignment_energy, PROHIBITED_PENALTY
 import os
 import requests
 
@@ -1703,6 +1703,7 @@ def calculate_adjustment():
     org_id = session.get('organization_id')
     
     configs = {c.key: c.value for c in Config.query.filter_by(organization_id=org_id).all()}
+    prohibited = {(pm.student_id, pm.teacher_id) for pm in ProhibitedMatch.query.filter_by(organization_id=org_id).all()}
     
     target_event = db.session.get(Event, int(event_id))
     if not target_event:
@@ -1762,6 +1763,8 @@ def calculate_adjustment():
                 configs, historical_data=final_evaluation_map.get((s.id, t.id)),
                 student_group_id=s.group_id
             )
+            if (s.id, t.id) in prohibited:
+                pair_score -= PROHIBITED_PENALTY
             student_scores[s_id] = round(pair_score, 2)
             total_score += pair_score
 

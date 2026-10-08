@@ -318,6 +318,7 @@ def evaluate_assignment_energy(teachers, students, attendances, assignment_dict,
         return 0.0
 
     att_map = {a.user_id: a for a in attendances}
+    prohibited_matches = prohibited_matches or set()
 
     def get_pair_score(t, s):
         att = att_map.get(s.user_id)
@@ -327,6 +328,8 @@ def evaluate_assignment_energy(teachers, students, attendances, assignment_dict,
                      t.pref_gender, s.pref_gender, t.gender, s.gender, config, 
                      historical_data=(evaluation_map or {}).get((s.id, t.id)),
                      student_group_id=s.group_id)
+        if (s.id, t.id) in prohibited_matches:
+            total -= PROHIBITED_PENALTY
         return total
 
     total_score = 0.0

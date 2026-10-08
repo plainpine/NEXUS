@@ -16,6 +16,10 @@
     </div>
 </div>
 
+<div id="scoreWarningBanner" style="display: none; background-color: #f8d7da; color: #721c24; padding: 0.75rem 1.25rem; margin-top: 1rem; border: 1px solid #f5c6cb; border-radius: 0.25rem; font-weight: bold;">
+    ⚠️ 警告: 合計スコアがマイナスになっています。マッチング禁止の組合せなど、不適切な割り当てが含まれている可能性があります。
+</div>
+
 <style>
     .tooltip-wrapper { position: relative; display: inline-block; cursor: help; }
     .tooltip {
@@ -108,8 +112,8 @@
     {% endfor %}
 </div>
 
-<button class="btn btn-primary" onclick="saveAdjustments()">保存</button>
-<a href="{{ url_for('export_adjustment_excel') }}" class="btn" style="background-color: #28a745; color: white; padding: 0.5rem 1rem; text-decoration: none; border-radius: 0.25rem; font-weight: bold; font-size: 1rem; border: 1px solid #28a745;">出力 (Excel)</a>
+<button id="saveBtn" class="btn btn-primary" onclick="saveAdjustments()">保存</button>
+<a id="exportBtn" href="{{ url_for('export_adjustment_excel') }}" class="btn" style="background-color: #28a745; color: white; padding: 0.5rem 1rem; text-decoration: none; border-radius: 0.25rem; font-weight: bold; font-size: 1rem; border: 1px solid #28a745;">出力 (Excel)</a>
 
 <script>
 function allowDrop(ev) {
@@ -132,6 +136,65 @@ function drop(ev) {
     
     var studentCard = document.querySelector(`[data-student-id="${studentId}"]`);
     target.appendChild(studentCard);
+    calculateEnergy();
+}
+
+function updateScoreUI(result) {
+    if (result.status === 'success') {
+        document.getElementById('energyResult').innerText = `合計スコア: ${result.total_score.toFixed(1)}`;
+        
+        let hasNegativeTotal = result.total_score < 0;
+        let warningBanner = document.getElementById('scoreWarningBanner');
+        let saveBtn = document.getElementById('saveBtn');
+        let exportBtn = document.getElementById('exportBtn');
+
+        if (hasNegativeTotal) {
+            warningBanner.style.display = 'block';
+            saveBtn.disabled = true;
+            saveBtn.style.opacity = '0.5';
+            saveBtn.style.cursor = 'not-allowed';
+            
+            exportBtn.style.pointerEvents = 'none';
+            exportBtn.style.opacity = '0.5';
+            exportBtn.style.backgroundColor = '#6c757d';
+            exportBtn.style.borderColor = '#6c757d';
+        } else {
+            warningBanner.style.display = 'none';
+            saveBtn.disabled = false;
+            saveBtn.style.opacity = '1';
+            saveBtn.style.cursor = 'pointer';
+            
+            exportBtn.style.pointerEvents = 'auto';
+            exportBtn.style.opacity = '1';
+            exportBtn.style.backgroundColor = '#28a745';
+            exportBtn.style.borderColor = '#28a745';
+        }
+
+        document.querySelectorAll('.teacher-row').forEach(row => {
+            let hasNegativePair = false;
+            row.querySelectorAll('.student-card').forEach(card => {
+                let s_id = card.getAttribute('data-student-id');
+                if (result.scores[s_id] !== undefined) {
+                    let scoreVal = result.scores[s_id];
+                    let span = card.querySelector('.student-score');
+                    if (span) {
+                        span.innerText = `(${scoreVal.toFixed(1)})`;
+                    }
+                    if (scoreVal < 0) {
+                        hasNegativePair = true;
+                    }
+                }
+            });
+
+            if (hasNegativePair) {
+                row.style.backgroundColor = '#f8d7da';
+                row.style.borderColor = '#f5c6cb';
+            } else {
+                row.style.backgroundColor = '';
+                row.style.borderColor = '#ccc';
+            }
+        });
+    }
 }
 
 function calculateEnergy() {
@@ -156,21 +219,16 @@ function calculateEnergy() {
         },
         body: JSON.stringify(payload),
     }).then(response => response.json()).then(result => {
-        if (result.status === 'success') {
-            document.getElementById('energyResult').innerText = `合計スコア: ${result.total_score.toFixed(1)}`;
-            for (var s_id in result.scores) {
-                document.querySelectorAll(`.student-score[data-student-id="${s_id}"]`).forEach(span => {
-                    span.innerText = `(${result.scores[s_id].toFixed(1)})`;
-                });
-            }
-        } else {
-            alert('計算に失敗しました');
-        }
+        updateScoreUI(result);
     }).catch(err => {
         console.error(err);
         alert('計算中にエラーが発生しました');
     });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    calculateEnergy();
+});
 
 function saveAdjustments() {
     var data = {};
